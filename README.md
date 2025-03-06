@@ -1,1 +1,2 @@
-# NPL
+# NPL  
+Le projet génial \o/
