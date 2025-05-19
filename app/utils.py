@@ -58,21 +58,67 @@ def summarize_text(text, num_sentences=2):
     # 4. Sélectionner les phrases les plus importantes
     top_indices = scores.argsort()[-num_sentences:][::-1]
 
-    # 5. Trier les phrases selon leur ordre d’origine
+    # 5. Trier les phrases selon leur ordre d'origine
     top_indices.sort()
     summary = [sentences[i] for i in top_indices]
 
     return " ".join(summary)
 
 ## Fonction de recherche sur Wikipédia
-import wikipediaapi
+import wikipedia
+from transformers import pipeline
+import nltk
+from nltk.tokenize import sent_tokenize
 
-wiki_wiki = wikipediaapi.Wikipedia('en')
+# Téléchargement des ressources NLTK nécessaires
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
-def search_wikipedia(query, sentences=2):
-    page = wiki_wiki.page(query)
-    if not page.exists():
-        return f"Désolé, je n'ai rien trouvé sur « {query} » sur Wikipédia."
+def summarize_text(text: str, max_length: int = 150) -> str:
+    """
+    Résume un texte en utilisant un modèle de résumé automatique
+    """
+    try:
+        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
+        return summary[0]['summary_text']
+    except Exception as e:
+        print(f"Erreur lors du résumé du texte: {str(e)}")
+        return text
 
-    summary = page.summary
-    return summarize_text(summary, num_sentences=sentences)
+def search_wikipedia(query: str, sentences: int = 2) -> str:
+    """
+    Recherche des informations sur Wikipedia
+    """
+    try:
+        # Recherche de la page Wikipedia
+        search_results = wikipedia.search(query, results=1)
+        if not search_results:
+            return "Désolé, je n'ai pas trouvé d'informations sur ce sujet."
+        
+        # Récupération du contenu
+        page = wikipedia.page(search_results[0])
+        content = page.content
+        
+        # Tokenization en phrases
+        sentences_list = sent_tokenize(content)
+        
+        # Retourne les premières phrases
+        return " ".join(sentences_list[:sentences])
+    except Exception as e:
+        print(f"Erreur lors de la recherche Wikipedia: {str(e)}")
+        return "Désolé, une erreur s'est produite lors de la recherche."
+
+def preprocess_text(text: str) -> str:
+    """
+    Prétraite le texte en le nettoyant
+    """
+    # Conversion en minuscules
+    text = text.lower()
+    
+    # Suppression des caractères spéciaux
+    text = ''.join(char for char in text if char.isalnum() or char.isspace())
+    
+    return text.strip()
