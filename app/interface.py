@@ -105,18 +105,18 @@ st.subheader("Choisissez une fonction :")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("💬 Chat Simple", key="chat_btn", use_container_width=True):
-        st.session_state.selected_function = "chat"
+    if st.button("🗂️ Classification catégorielle de texte", key="classify_btn", use_container_width=True):
+        st.session_state.selected_function = "classify"
         st.experimental_rerun()
 
 with col2:
-    if st.button("📚 Recherche Wikipedia", key="wiki_btn", use_container_width=True):
-        st.session_state.selected_function = "wiki"
+    if st.button("📝 Résumé de Texte", key="summarize_btn", use_container_width=True):
+        st.session_state.selected_function = "summarize"
         st.experimental_rerun()
 
 with col3:
-    if st.button("📝 Résumé de Texte", key="summarize_btn", use_container_width=True):
-        st.session_state.selected_function = "summarize"
+    if st.button("📚 Recherche Wikipedia", key="wiki_btn", use_container_width=True):
+        st.session_state.selected_function = "wiki"
         st.experimental_rerun()
 
 # Affichage de la fonction sélectionnée
@@ -182,6 +182,6 @@ with col2:
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center'>
-        <p>Chatbot Intelligent - Développé avec ❤️</p>
+        <p>Chatbot réalisé dans le cadre du cours de *Natural Langage Processing* Ensegné par Miotto à l'école Ynov</p>
     </div>
 """, unsafe_allow_html=True) 
