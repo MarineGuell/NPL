@@ -6,96 +6,132 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import os
+from typing import Optional, Dict, Any
+import numpy as np
 
 from utils import summarize_text, search_wikipedia
 
-# Charger le modèle et le vectoriseur
-model = joblib.load("app/model.joblib")
-vectorizer = joblib.load("app/vectorizer.joblib")
-
-# Prétraitement
-stop_words = set(stopwords.words('english'))
-lemmatizer = WordNetLemmatizer()
-
-def preprocess_text(text):
-    text = text.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    tokens = word_tokenize(text)
-    tokens = [word for word in tokens if word not in stop_words]
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
-    return " ".join(tokens)
-
-# Lancer le chatbot
-# def run_chatbot():
-#     print("🤖 Chatbot NLP - Catégorisation de texte")
-#     while True:
-#         user_input = input("Vous : ")
-#         if user_input.lower() in ["quit", "exit", "bye"]:
-#             print("Chatbot : À bientôt !")
-#             break
-
-#         clean = preprocess_text(user_input)
-#         vect = vectorizer.transform([clean])
-#         prediction = model.predict(vect)[0]
-
-#         print(f"Chatbot : Ce texte semble parler de **{prediction}**.")
-
-def run_chatbot():
-    print("🤖 Chatbot NLP - Classifieur + Résumeur")
-    print("Tapez 'resume: votre texte' pour générer un résumé.")
-    print("Tapez 'quit' pour quitter.")
-    
-    while True:
-        user_input = input("Vous : ")
-        if user_input.lower() in ["quit", "exit", "bye"]:
-            print("Chatbot : À bientôt !")
-            break
-
-        if user_input.lower().startswith("resume:"):
-            texte = user_input[7:].strip()
-            summary = summarize_text(texte)
-            print("Chatbot (résumé) :", summary)
-
-        elif user_input.lower().startswith("wiki:"):
-            query = user_input[5:].strip()
-            result = search_wikipedia(query)
-            print("Chatbot (wikipedia) :", result)
-
-        else:
-            clean = preprocess_text(user_input)
-            vect = vectorizer.transform([clean])
-            prediction = model.predict(vect)[0]
-            print(f"Chatbot (catégorie) : Ce texte semble parler de **{prediction}**.")
-
+# Téléchargement des ressources NLTK nécessaires
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
 
 class Chatbot:
     def __init__(self):
         self.model_name = "microsoft/DialoGPT-medium"
         self.tokenizer = None
         self.model = None
-        self.initialize_model()
+        self.classifier_model = None
+        self.vectorizer = None
+        self.initialize_models()
 
-    def initialize_model(self):
-        """Initialise le modèle et le tokenizer"""
+    def create_base_model(self):
+        """Crée un modèle de classification de base"""
+        print("🔄 Création d'un modèle de classification de base...")
+        
+        # Données d'exemple pour l'entraînement
+        texts = [
+            "Bonjour, comment puis-je vous aider ?",
+            "Quelle est la météo aujourd'hui ?",
+            "Pouvez-vous me donner des informations sur Python ?",
+            "Je cherche des recettes de cuisine",
+            "Comment fonctionne l'intelligence artificielle ?",
+            "Quelles sont les dernières nouvelles ?",
+            "Je voudrais apprendre à programmer",
+            "Pouvez-vous m'aider avec mes devoirs ?",
+            "Je cherche des informations sur l'histoire",
+            "Comment faire du sport à la maison ?"
+        ]
+        
+        # Catégories correspondantes
+        categories = [
+            "accueil",
+            "météo",
+            "technologie",
+            "cuisine",
+            "technologie",
+            "actualités",
+            "éducation",
+            "éducation",
+            "histoire",
+            "sport"
+        ]
+        
+        # Création et entraînement du vectoriseur
+        self.vectorizer = TfidfVectorizer()
+        X = self.vectorizer.fit_transform(texts)
+        
+        # Création et entraînement du modèle
+        self.classifier_model = MultinomialNB()
+        self.classifier_model.fit(X, categories)
+        
+        # Sauvegarde des modèles
+        os.makedirs("app", exist_ok=True)
+        joblib.dump(self.classifier_model, "app/model.joblib")
+        joblib.dump(self.vectorizer, "app/vectorizer.joblib")
+        
+        print("✅ Modèle de base créé et sauvegardé !")
+
+    def initialize_models(self):
+        """Initialise tous les modèles nécessaires"""
         try:
-            print("🔄 Chargement du modèle DialoGPT...")
+            print("🔄 Chargement des modèles...")
+            
+            # Chargement du modèle DialoGPT
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
-            print("✅ Modèle chargé avec succès !")
+            
+            # Chargement du modèle de classification
+            model_path = "app/model.joblib"
+            vectorizer_path = "app/vectorizer.joblib"
+            
+            if os.path.exists(model_path) and os.path.exists(vectorizer_path):
+                self.classifier_model = joblib.load(model_path)
+                self.vectorizer = joblib.load(vectorizer_path)
+            else:
+                print("⚠️ Modèles de classification non trouvés. Création d'un modèle de base...")
+                self.create_base_model()
+            
+            print("✅ Modèles chargés avec succès !")
         except Exception as e:
-            print(f"❌ Erreur lors de l'initialisation du modèle: {str(e)}")
+            print(f"❌ Erreur lors de l'initialisation des modèles: {str(e)}")
             raise
 
-    def generate_response(self, user_input: str) -> str:
+    def preprocess_text(self, text: str) -> str:
+        """Prétraite le texte pour la classification"""
+        text = text.lower()
+        text = text.translate(str.maketrans('', '', string.punctuation))
+        tokens = word_tokenize(text)
+        tokens = [word for word in tokens if word not in stopwords.words('english')]
+        tokens = [WordNetLemmatizer().lemmatize(word) for word in tokens]
+        return " ".join(tokens)
+
+    def generate_response(self, user_input: str) -> Dict[str, Any]:
         """Génère une réponse basée sur l'entrée de l'utilisateur"""
         try:
-            # Encodage de l'entrée utilisateur
+            response = {
+                "text": "",
+                "category": None,
+                "confidence": None
+            }
+            
+            # Classification si le modèle est disponible
+            if self.classifier_model and self.vectorizer:
+                clean_text = self.preprocess_text(user_input)
+                vect = self.vectorizer.transform([clean_text])
+                prediction = self.classifier_model.predict(vect)[0]
+                confidence = self.classifier_model.predict_proba(vect).max()
+                response["category"] = prediction
+                response["confidence"] = float(confidence)
+            
+            # Génération de réponse avec DialoGPT
             input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, 
                                             return_tensors='pt')
             
-            # Génération de la réponse
             output = self.model.generate(
                 input_ids,
                 max_length=1000,
@@ -107,15 +143,30 @@ class Chatbot:
                 temperature=0.8
             )
             
-            # Décodage de la réponse
-            response = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], 
-                                           skip_special_tokens=True)
+            response["text"] = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], 
+                                                   skip_special_tokens=True)
             
-            return response if response else "Je ne comprends pas votre demande."
+            return response
             
         except Exception as e:
             print(f"❌ Erreur lors de la génération de la réponse: {str(e)}")
-            return "Désolé, une erreur s'est produite. Veuillez réessayer."
+            return {
+                "text": "Désolé, une erreur s'est produite. Veuillez réessayer.",
+                "category": None,
+                "confidence": None
+            }
+
+    def cleanup(self):
+        """Nettoie les ressources"""
+        if self.model:
+            del self.model
+        if self.tokenizer:
+            del self.tokenizer
+        if self.classifier_model:
+            del self.classifier_model
+        if self.vectorizer:
+            del self.vectorizer
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
 
 if __name__ == "__main__":
@@ -127,6 +178,7 @@ if __name__ == "__main__":
         user_input = input("Vous : ")
         if user_input.lower() in ["quit", "exit", "bye"]:
             print("Chatbot : Au revoir !")
+            chatbot.cleanup()
             break
             
         response = chatbot.generate_response(user_input)

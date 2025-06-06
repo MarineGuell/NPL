@@ -1,11 +1,25 @@
-### nettoyage de texte
-def cleaning(sentence):
+import re
+import string
+import nltk
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
+import wikipedia
+from transformers import pipeline
 
+# Téléchargement des ressources NLTK nécessaires
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+def cleaning(sentence):
     # Basic cleaning
     sentence = sentence.strip()
     sentence = sentence.lower()
     sentence = ''.join(char for char in sentence if not char.isdigit())
-###
+    
     # retirer la premiere adresse mail , puis toutes les autres
     sentence = re.sub(r'From:.*?Subject:', '', sentence, flags=re.DOTALL)
     sentence = re.sub(r'\S+@\S+', '', sentence)
@@ -15,7 +29,7 @@ def cleaning(sentence):
 
     # Remove URLs
     sentence = re.sub(r'http\S+|www\S+|https\S+', '', sentence, flags=re.MULTILINE)
-###
+    
     # Advanced cleaning
     for punctuation in string.punctuation:
         sentence = sentence.replace(punctuation, '')
@@ -34,59 +48,43 @@ def cleaning(sentence):
 
     return cleaned_sentence
 
-
-## Fonction de résumé simple (baseline)
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-import numpy as np
-import nltk
-from nltk.tokenize import sent_tokenize
-
-nltk.download('punkt')
-
-def summarize_text(text, num_sentences=2):
-    # 1. Découper le texte en phrases
-    sentences = sent_tokenize(text)
+def summarize_text(text: str, max_length: int = 150, use_advanced: bool = True) -> str:
+    """
+    Résume un texte en utilisant soit BART (avancé) soit TF-IDF (basique)
+    """
+    if use_advanced:
+        try:
+            summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+            summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
+            return summary[0]['summary_text']
+        except Exception as e:
+            print(f"Erreur lors du résumé avancé, utilisation du résumé basique: {str(e)}")
+            use_advanced = False
     
-    # 2. Appliquer TF-IDF sur les phrases
-    vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(sentences)
+    if not use_advanced:
+        try:
+            # Découper le texte en phrases
+            sentences = sent_tokenize(text)
+            
+            # Appliquer TF-IDF sur les phrases
+            vectorizer = TfidfVectorizer()
+            X = vectorizer.fit_transform(sentences)
 
-    # 3. Calculer un score pour chaque phrase
-    scores = np.sum(X.toarray(), axis=1)
+            # Calculer un score pour chaque phrase
+            scores = np.sum(X.toarray(), axis=1)
 
-    # 4. Sélectionner les phrases les plus importantes
-    top_indices = scores.argsort()[-num_sentences:][::-1]
+            # Sélectionner les phrases les plus importantes
+            num_sentences = min(2, len(sentences))
+            top_indices = scores.argsort()[-num_sentences:][::-1]
 
-    # 5. Trier les phrases selon leur ordre d'origine
-    top_indices.sort()
-    summary = [sentences[i] for i in top_indices]
+            # Trier les phrases selon leur ordre d'origine
+            top_indices.sort()
+            summary = [sentences[i] for i in top_indices]
 
-    return " ".join(summary)
-
-## Fonction de recherche sur Wikipédia
-import wikipedia
-from transformers import pipeline
-import nltk
-from nltk.tokenize import sent_tokenize
-
-# Téléchargement des ressources NLTK nécessaires
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-def summarize_text(text: str, max_length: int = 150) -> str:
-    """
-    Résume un texte en utilisant un modèle de résumé automatique
-    """
-    try:
-        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
-        return summary[0]['summary_text']
-    except Exception as e:
-        print(f"Erreur lors du résumé du texte: {str(e)}")
-        return text
+            return " ".join(summary)
+        except Exception as e:
+            print(f"Erreur lors du résumé basique: {str(e)}")
+            return text
 
 def search_wikipedia(query: str, sentences: int = 2) -> str:
     """

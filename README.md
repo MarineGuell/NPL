@@ -36,8 +36,13 @@ pip install -r requirements.txt
 cd app
 python main.py
 ```
+2. Lancer l'interface :
+```bash
+cd app
+streamlit run interface.py
+```
 
-2. Accéder à l'API :
+3. Accéder à l'API :
 - Interface Swagger : http://localhost:8000/docs
 - Endpoint principal : http://localhost:8000
 - Endpoint de chat : http://localhost:8000/chat
