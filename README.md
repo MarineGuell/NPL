@@ -21,8 +21,8 @@ cd NPL-1
 
 2. Créer un environnement virtuel :
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Sur Windows : .venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate  # Sur Windows : .venv\Scripts\activate
 ```
 
 3. Installer les dépendances :
@@ -31,6 +31,10 @@ pip install -r requirements.txt
 ```
 
 ## Utilisation
+1. Lancer l'interface :
+```bash
+streamlit run app/interface.py
+```
 
 1. Lancer l'application :
 ```bash

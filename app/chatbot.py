@@ -4,29 +4,19 @@ Ce script implémente la logique du chatbot, incluant la classification de texte
 la génération de réponses et l'intégration avec différents modèles de langage.
 """
 
+import os
+import torch
 import joblib
-import re
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
+import numpy as np
+from typing import Optional, Dict, Any
+import time
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from transformers import AutoTokenizer, AutoModelForCausalLM, BertTokenizer, BertForSequenceClassification
-import torch
-import os
-from typing import Optional, Dict, Any
-import numpy as np
-from sklearn.model_selection import GridSearchCV
-from sklearn.pipeline import Pipeline
 
 from utils import summarize_text, search_wikipedia, preprocess_text
-
-# Téléchargement des ressources NLTK nécessaires pour le traitement du texte
-nltk.download('punkt')  # Pour la tokenization
-nltk.download('stopwords')  # Pour la suppression des mots vides
-nltk.download('wordnet')  # Pour la lemmatization
 
 class Chatbot:
     """
@@ -41,14 +31,13 @@ class Chatbot:
         self.model = None  # Modèle de langage
         self.classifier_model = None  # Modèle de classification ML
         self.vectorizer = None  # Vectoriseur pour la classification ML
-        # Ajout pour BERT
         self.bert_tokenizer = None  # Tokenizer BERT
         self.bert_model = None  # Modèle BERT pour la classification
+        self.optimized_model = None  # Modèle ML optimisé
         self.bert_labels = [
             "accueil", "météo", "technologie", "cuisine", "actualités",
             "éducation", "histoire", "sport"
         ]
-        self.optimized_model = None  # Modèle ML optimisé
         self.initialize_models()
 
     def optimize_ml_model(self, X_train, y_train):
@@ -171,8 +160,9 @@ class Chatbot:
             # Chargement du modèle BERT pour la classification DL
             self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
             self.bert_model = BertForSequenceClassification.from_pretrained(
-                "textattack/bert-base-uncased-imdb",
-                num_labels=len(self.bert_labels)
+                "bert-base-uncased",
+                num_labels=len(self.bert_labels),
+                ignore_mismatched_sizes=True
             )
             
             print("✅ Modèles chargés avec succès !")
@@ -194,6 +184,61 @@ class Chatbot:
             "confidence": float(probs[pred_idx]),
             "embeddings": outputs.hidden_states[-1][0][0].detach().numpy().tolist() if hasattr(outputs, 'hidden_states') else None
         }
+
+    def search_wikipedia(self, query: str) -> str:
+        """
+        Effectue une recherche Wikipedia et retourne un résumé.
+        Args:
+            query (str): La requête de recherche
+        Returns:
+            str: Le résumé de l'article Wikipedia
+        """
+        try:
+            return search_wikipedia(query)
+        except Exception as e:
+            print(f"❌ Erreur lors de la recherche Wikipedia: {str(e)}")
+            return "Désolé, je n'ai pas pu trouver d'informations sur ce sujet dans Wikipedia."
+
+    def summarize_text(self, text: str, use_dl: bool = True) -> str:
+        """
+        Résume un texte en utilisant soit BART (DL) soit TF-IDF (ML).
+        Args:
+            text (str): Le texte à résumer
+            use_dl (bool): Si True, utilise BART (DL), sinon utilise TF-IDF (ML)
+        Returns:
+            str: Le résumé du texte
+        """
+        try:
+            if use_dl:
+                return summarize_text(text)  # Utilise BART (DL)
+            else:
+                # Méthode ML avec TF-IDF
+                from nltk.tokenize import sent_tokenize
+                import numpy as np
+                from sklearn.feature_extraction.text import TfidfVectorizer
+                
+                # Découpage du texte en phrases
+                sentences = sent_tokenize(text)
+                
+                # Création du vectoriseur TF-IDF
+                vectorizer = TfidfVectorizer(stop_words='english')
+                tfidf_matrix = vectorizer.fit_transform(sentences)
+                
+                # Calcul des scores pour chaque phrase
+                sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
+                
+                # Sélection des phrases les plus importantes
+                num_sentences = min(3, len(sentences))  # Limite à 3 phrases
+                top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
+                top_indices.sort()  # Garde l'ordre original
+                
+                # Construction du résumé
+                summary = [sentences[i] for i in top_indices]
+                return " ".join(summary)
+                
+        except Exception as e:
+            print(f"❌ Erreur lors du résumé du texte: {str(e)}")
+            return "Désolé, je n'ai pas pu résumer ce texte."
 
     def generate_response(self, user_input: str, use_dl: bool = False) -> Dict[str, Any]:
         """
@@ -278,11 +323,10 @@ class Chatbot:
             del self.optimized_model
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-
 if __name__ == "__main__":
     # Test simple du chatbot en mode console
     chatbot = Chatbot()
-    print("�� Chatbot initialisé ! Tapez 'quit' pour quitter.")
+    print("Chatbot initialisé ! Tapez 'quit' pour quitter.")
     
     while True:
         user_input = input("Vous : ")

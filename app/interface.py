@@ -12,14 +12,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 from chatbot import Chatbot
-from monitoring import Monitoring
+import time
 
 # Configuration de la page Streamlit
 st.set_page_config(
-    page_title="Chatbot Intelligent",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Kero Chatbot",
+    page_icon="🐸",
+    layout="wide"
 )
 
 # Style CSS personnalisé pour l'interface
@@ -77,6 +76,52 @@ st.markdown("""
     .function-button.active {
         background-color: #45a049;
     }
+    .stChatMessage {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+    .stChatMessage[data-testid="stChatMessage"] {
+        background-color: #f0f2f6;
+    }
+    .stChatMessage[data-testid="stChatMessage"] [data-testid="chatAvatarIcon"] {
+        background-color: #4CAF50;
+    }
+    .user-message {
+        background-color: #e3f2fd;
+    }
+    .bot-message {
+        background-color: #f5f5f5;
+    }
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 1rem 0;
+        height: 50px;
+    }
+    .loading-text {
+        color: #4CAF50;
+        font-weight: bold;
+        margin-left: 0.5rem;
+    }
+    @keyframes jump {
+        0% { transform: translateY(0); }
+        50% { transform: translateY(-20px); }
+        100% { transform: translateY(0); }
+    }
+    .jumping-frog {
+        font-size: 2em;
+        animation: jump 1s infinite;
+        display: inline-block;
+    }
+    .loading-message {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -84,14 +129,6 @@ st.markdown("""
 # Stocke l'historique des messages
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Stocke les métriques du système
-if "metrics" not in st.session_state:
-    st.session_state.metrics = {
-        "total_requests": 0,
-        "success_rate": 0,
-        "average_response_time": 0
-    }
 
 # Stocke la fonction sélectionnée
 if "selected_function" not in st.session_state:
@@ -117,72 +154,72 @@ def send_message(message, function_type="chat"):
         st.error(f"Erreur de connexion au serveur: {str(e)}")
         return None
 
-# Fonction pour mettre à jour les métriques
-def update_metrics():
-    """
-    Récupère et met à jour les métriques depuis le serveur.
-    """
-    try:
-        metrics = requests.get("http://localhost:8000/metrics").json()
-        st.session_state.metrics = metrics
-    except:
-        pass
-
 def main():
-    st.title("🤖 Chatbot Avancé")
+    st.title("🐸 Kero Chatbot")
     
     # Initialisation des sessions
     if "chatbot" not in st.session_state:
         st.session_state.chatbot = Chatbot()
-    if "monitoring" not in st.session_state:
-        st.session_state.monitoring = Monitoring()
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "stats" not in st.session_state:
-        st.session_state.stats = {
-            "total_requests": 0,
-            "avg_response_time": 0,
-            "success_rate": 0
-        }
-
-    # Sidebar pour les statistiques
-    with st.sidebar:
-        st.header("📊 Statistiques")
-        st.metric("Total Requêtes", st.session_state.stats["total_requests"])
-        st.metric("Temps de réponse moyen", f"{st.session_state.stats['avg_response_time']:.2f}s")
-        st.metric("Taux de succès", f"{st.session_state.stats['success_rate']:.1f}%")
-
-    # Sélection du mode de classification
-    classification_mode = st.radio(
-        "Mode de classification",
-        ["ML Classique (Naive Bayes)", "Deep Learning (BERT)"],
-        horizontal=True
-    )
-    use_dl = classification_mode == "Deep Learning (BERT)"
+    if "is_processing" not in st.session_state:
+        st.session_state.is_processing = False
 
     # Sélection de la fonction
     function = st.radio(
-        "Choisissez une fonction",
+        "Choisissez une fonction, kero 🐸",
         ["Classification", "Résumé de texte", "Recherche Wikipedia"],
         horizontal=True
     )
 
+    # Sélection du mode selon la fonction
+    if function == "Classification":
+        model_type = st.radio(
+            "Choisisissez votre type de modèle pour réaliser la prédiction, kero 🐸",
+            ["ML Classique (Naive Bayes)", "Deep Learning (BERT)"],
+            horizontal=True
+        )
+        use_dl = model_type == "Deep Learning (BERT)"
+    elif function == "Résumé de texte":
+        model_type = st.radio(
+            "Choisisissez votre type de modèle pour le résumé, kero 🐸",
+            ["ML Classique (TF-IDF)", "Deep Learning (BART)"],
+            horizontal=True
+        )
+        use_dl = model_type == "Deep Learning (BART)"
+
     # Zone de chat
-    st.subheader("💬 Chat")
+    st.subheader("💬🐸Chat, kero")
     
     # Affichage des messages
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+        with st.chat_message(message["role"], avatar="🐸" if message["role"] == "assistant" else "👤"):
+            # Affichage du contenu avec support LaTeX
+            st.markdown(message["content"], unsafe_allow_html=True)
             if "category" in message and message["category"]:
                 st.info(f"Catégorie: {message['category']} (Confiance: {message['confidence']:.2%})")
             if "embeddings" in message and message["embeddings"]:
                 st.caption("Embeddings BERT disponibles")
 
+    # Animation de chargement
+    if st.session_state.is_processing:
+        st.markdown("""
+        <div class="loading-container">
+            <div class="loading-message">
+                <div class="jumping-frog">🐸</div>
+                <div class="loading-text">Kero réfléchit...</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # Zone de saisie
     user_input = st.chat_input("Écrivez votre message ici...")
 
     if user_input:
+        # Démarrage du traitement
+        st.session_state.is_processing = True
+        st.experimental_rerun()
+
         # Ajout du message de l'utilisateur
         st.session_state.messages.append({"role": "user", "content": user_input})
         
@@ -197,7 +234,7 @@ def main():
                 "embeddings": response["embeddings"]
             })
         elif function == "Résumé de texte":
-            summary = st.session_state.chatbot.summarize_text(user_input)
+            summary = st.session_state.chatbot.summarize_text(user_input, use_dl=use_dl)
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": summary
@@ -209,12 +246,8 @@ def main():
                 "content": wiki_response
             })
 
-        # Mise à jour des statistiques
-        st.session_state.stats["total_requests"] += 1
-        st.session_state.stats["avg_response_time"] = st.session_state.monitoring.get_average_response_time()
-        st.session_state.stats["success_rate"] = st.session_state.monitoring.get_success_rate()
-
-        # Rafraîchir l'affichage
+        # Fin du traitement
+        st.session_state.is_processing = False
         st.experimental_rerun()
 
 if __name__ == "__main__":
@@ -224,6 +257,6 @@ if __name__ == "__main__":
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center'>
-        <p>Chatbot réalisé dans le cadre du cours de *Natural Langage Processing* Ensegné par Miotto à l'école Ynov</p>
+        <p>Chatbot réalisé dans le cadre du cours de Natural Langage Processing Enseigné par Nicolas Miotto à l'école Ynov Toulouse Campus</p>
     </div>
 """, unsafe_allow_html=True) 
