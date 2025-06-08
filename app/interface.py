@@ -11,6 +11,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
+from chatbot import Chatbot
+from monitoring import Monitoring
 
 # Configuration de la page Streamlit
 st.set_page_config(
@@ -126,92 +128,97 @@ def update_metrics():
     except:
         pass
 
-# Interface principale
-st.title("🤖 Chatbot Intelligent")
-
-# Section de sélection des fonctionnalités
-st.subheader("Choisissez une fonction :")
-col1, col2, col3 = st.columns(3)
-
-# Bouton pour la classification de texte
-with col1:
-    if st.button("🗂️ Classification catégorielle de texte", key="classify_btn", use_container_width=True):
-        st.session_state.selected_function = "classify"
-        st.experimental_rerun()
-
-# Bouton pour le résumé de texte
-with col2:
-    if st.button("📝 Résumé de Texte", key="summarize_btn", use_container_width=True):
-        st.session_state.selected_function = "summarize"
-        st.experimental_rerun()
-
-# Bouton pour la recherche Wikipedia
-with col3:
-    if st.button("📚 Recherche Wikipedia", key="wiki_btn", use_container_width=True):
-        st.session_state.selected_function = "wiki"
-        st.experimental_rerun()
-
-# Affichage de la fonction actuellement sélectionnée
-st.info(f"Fonction actuelle : {st.session_state.selected_function.upper()}")
-
-# Champ de saisie pour les messages
-user_input = st.chat_input("Écrivez votre message ici...")
-
-# Traitement des messages
-if user_input:
-    # Enregistrement du message de l'utilisateur
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input,
-        "timestamp": datetime.now().isoformat()
-    })
+def main():
+    st.title("🤖 Chatbot Avancé")
     
-    # Envoi au chatbot et récupération de la réponse
-    response = send_message(user_input, st.session_state.selected_function)
+    # Initialisation des sessions
+    if "chatbot" not in st.session_state:
+        st.session_state.chatbot = Chatbot()
+    if "monitoring" not in st.session_state:
+        st.session_state.monitoring = Monitoring()
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "stats" not in st.session_state:
+        st.session_state.stats = {
+            "total_requests": 0,
+            "avg_response_time": 0,
+            "success_rate": 0
+        }
+
+    # Sidebar pour les statistiques
+    with st.sidebar:
+        st.header("📊 Statistiques")
+        st.metric("Total Requêtes", st.session_state.stats["total_requests"])
+        st.metric("Temps de réponse moyen", f"{st.session_state.stats['avg_response_time']:.2f}s")
+        st.metric("Taux de succès", f"{st.session_state.stats['success_rate']:.1f}%")
+
+    # Sélection du mode de classification
+    classification_mode = st.radio(
+        "Mode de classification",
+        ["ML Classique (Naive Bayes)", "Deep Learning (BERT)"],
+        horizontal=True
+    )
+    use_dl = classification_mode == "Deep Learning (BERT)"
+
+    # Sélection de la fonction
+    function = st.radio(
+        "Choisissez une fonction",
+        ["Classification", "Résumé de texte", "Recherche Wikipedia"],
+        horizontal=True
+    )
+
+    # Zone de chat
+    st.subheader("💬 Chat")
     
-    if response:
-        # Enregistrement de la réponse du chatbot
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": response.get("text", "Désolé, je n'ai pas pu générer une réponse."),
-            "category": response.get("category"),
-            "confidence": response.get("confidence"),
-            "timestamp": datetime.now().isoformat()
-        })
-        update_metrics()
-        st.experimental_rerun()
-
-# Mise en page en deux colonnes
-col1, col2 = st.columns([2, 1])
-
-# Colonne principale : Affichage des messages
-with col1:
+    # Affichage des messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
             if "category" in message and message["category"]:
-                st.info(f"Catégorie: {message['category']} (Confiance: {message.get('confidence', 0):.2f})")
+                st.info(f"Catégorie: {message['category']} (Confiance: {message['confidence']:.2%})")
+            if "embeddings" in message and message["embeddings"]:
+                st.caption("Embeddings BERT disponibles")
 
-# Colonne latérale : Statistiques
-with col2:
-    st.title("📊 Statistiques")
-    
-    # Bouton de rafraîchissement des métriques
-    if st.button("🔄 Rafraîchir les statistiques"):
-        update_metrics()
-    
-    # Affichage des métriques principales
-    st.metric("Total Requêtes", st.session_state.metrics.get("total_requests", 0))
-    st.metric("Taux de Succès", f"{st.session_state.metrics.get('success_rate', 0)*100:.1f}%")
-    st.metric("Temps de Réponse Moyen", f"{st.session_state.metrics.get('average_response_time', 0):.2f}s")
-    
-    # Graphique de distribution des catégories
-    if "category_distribution" in st.session_state.metrics:
-        categories = st.session_state.metrics["category_distribution"]
-        if categories:
-            df = pd.DataFrame(list(categories.items()), columns=["Catégorie", "Nombre"])
-            fig = px.pie(df, values="Nombre", names="Catégorie", title="Distribution des Catégories")
-            st.plotly_chart(fig, use_container_width=True)
+    # Zone de saisie
+    user_input = st.chat_input("Écrivez votre message ici...")
+
+    if user_input:
+        # Ajout du message de l'utilisateur
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        # Traitement selon la fonction sélectionnée
+        if function == "Classification":
+            response = st.session_state.chatbot.generate_response(user_input, use_dl=use_dl)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response["text"],
+                "category": response["category"],
+                "confidence": response["confidence"],
+                "embeddings": response["embeddings"]
+            })
+        elif function == "Résumé de texte":
+            summary = st.session_state.chatbot.summarize_text(user_input)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": summary
+            })
+        elif function == "Recherche Wikipedia":
+            wiki_response = st.session_state.chatbot.search_wikipedia(user_input)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": wiki_response
+            })
+
+        # Mise à jour des statistiques
+        st.session_state.stats["total_requests"] += 1
+        st.session_state.stats["avg_response_time"] = st.session_state.monitoring.get_average_response_time()
+        st.session_state.stats["success_rate"] = st.session_state.monitoring.get_success_rate()
+
+        # Rafraîchir l'affichage
+        st.experimental_rerun()
+
+if __name__ == "__main__":
+    main()
 
 # Pied de page
 st.markdown("---")

@@ -66,6 +66,35 @@ def cleaning(sentence: str) -> str:
 
     return cleaned_sentence
 
+def preprocess_text(text: str) -> str:
+    """
+    Prétraite un texte en le nettoyant et en le normalisant.
+    Effectue la tokenization, la suppression des mots vides et la lemmatization.
+    
+    Args:
+        text (str): Le texte à prétraiter
+        
+    Returns:
+        str: Le texte prétraité
+    """
+    # Conversion en minuscules
+    text = text.lower()
+    
+    # Suppression de la ponctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    
+    # Tokenization
+    tokens = word_tokenize(text)
+    
+    # Suppression des mots vides
+    tokens = [word for word in tokens if word not in stopwords.words('english')]
+    
+    # Lemmatization
+    tokens = [WordNetLemmatizer().lemmatize(word) for word in tokens]
+    
+    # Reconstruction du texte
+    return " ".join(tokens)
+
 def summarize_text(text: str, max_length: int = 150, use_advanced: bool = True) -> str:
     """
     Génère un résumé d'un texte en utilisant soit BART (avancé) soit TF-IDF (basique).
@@ -144,20 +173,4 @@ def search_wikipedia(query: str, sentences: int = 2) -> str:
         print(f"Erreur lors de la recherche Wikipedia: {str(e)}")
         return "Désolé, une erreur s'est produite lors de la recherche."
 
-def preprocess_text(text: str) -> str:
-    """
-    Prétraite un texte en le nettoyant et en le normalisant.
-    
-    Args:
-        text (str): Le texte à prétraiter
-        
-    Returns:
-        str: Le texte prétraité
-    """
-    # Conversion en minuscules
-    text = text.lower()
-    
-    # Suppression des caractères spéciaux, ne garde que les alphanumériques et espaces
-    text = ''.join(char for char in text if char.isalnum() or char.isspace())
-    
-    return text.strip()
+

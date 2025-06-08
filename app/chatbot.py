@@ -13,13 +13,15 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BertTokenizer, BertForSequenceClassification
 import torch
 import os
 from typing import Optional, Dict, Any
 import numpy as np
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
 
-from utils import summarize_text, search_wikipedia
+from utils import summarize_text, search_wikipedia, preprocess_text
 
 # Téléchargement des ressources NLTK nécessaires pour le traitement du texte
 nltk.download('punkt')  # Pour la tokenization
@@ -37,59 +39,111 @@ class Chatbot:
         self.model_name = "microsoft/DialoGPT-medium"  # Modèle de langage utilisé
         self.tokenizer = None  # Tokenizer pour le modèle de langage
         self.model = None  # Modèle de langage
-        self.classifier_model = None  # Modèle de classification
-        self.vectorizer = None  # Vectoriseur pour la classification
+        self.classifier_model = None  # Modèle de classification ML
+        self.vectorizer = None  # Vectoriseur pour la classification ML
+        # Ajout pour BERT
+        self.bert_tokenizer = None  # Tokenizer BERT
+        self.bert_model = None  # Modèle BERT pour la classification
+        self.bert_labels = [
+            "accueil", "météo", "technologie", "cuisine", "actualités",
+            "éducation", "histoire", "sport"
+        ]
+        self.optimized_model = None  # Modèle ML optimisé
         self.initialize_models()
+
+    def optimize_ml_model(self, X_train, y_train):
+        """
+        Optimise les hyperparamètres du modèle ML (Naive Bayes) avec GridSearchCV.
+        Args:
+            X_train: Données d'entraînement
+            y_train: Labels d'entraînement
+        """
+        try:
+            print("🔄 Optimisation des hyperparamètres du modèle ML...")
+            
+            # Création du pipeline
+            pipeline = Pipeline([
+                ('tfidf', TfidfVectorizer()),
+                ('clf', MultinomialNB())
+            ])
+            
+            # Paramètres à optimiser
+            param_grid = {
+                'tfidf__max_features': [5000, 10000, 15000],
+                'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
+                'tfidf__min_df': [1, 2, 3],
+                'clf__alpha': [0.1, 0.5, 1.0]
+            }
+            
+            # GridSearchCV
+            grid_search = GridSearchCV(
+                pipeline,
+                param_grid,
+                cv=5,
+                scoring='accuracy',
+                n_jobs=-1,
+                verbose=1
+            )
+            
+            # Entraînement
+            grid_search.fit(X_train, y_train)
+            
+            # Sauvegarde du meilleur modèle
+            self.optimized_model = grid_search.best_estimator_
+            self.vectorizer = self.optimized_model.named_steps['tfidf']
+            self.classifier_model = self.optimized_model.named_steps['clf']
+            
+            print(f"✅ Optimisation terminée ! Meilleurs paramètres : {grid_search.best_params_}")
+            print(f"Score de validation : {grid_search.best_score_:.3f}")
+            
+            # Sauvegarde du modèle optimisé
+            joblib.dump(self.optimized_model, "app/optimized_model.joblib")
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de l'optimisation du modèle : {str(e)}")
+            raise
 
     def create_base_model(self):
         """
-        Crée un modèle de classification de base avec des données d'exemple.
-        Utilisé si aucun modèle n'est trouvé lors de l'initialisation.
+        Crée un modèle de base avec des données d'exemple.
         """
-        print("🔄 Création d'un modèle de classification de base...")
-        
-        # Données d'exemple pour l'entraînement initial
-        texts = [
-            "Bonjour, comment puis-je vous aider ?",
-            "Quelle est la météo aujourd'hui ?",
-            "Pouvez-vous me donner des informations sur Python ?",
-            "Je cherche des recettes de cuisine",
-            "Comment fonctionne l'intelligence artificielle ?",
-            "Quelles sont les dernières nouvelles ?",
-            "Je voudrais apprendre à programmer",
-            "Pouvez-vous m'aider avec mes devoirs ?",
-            "Je cherche des informations sur l'histoire",
-            "Comment faire du sport à la maison ?"
-        ]
-        
-        # Catégories correspondantes aux textes d'exemple
-        categories = [
-            "accueil",
-            "météo",
-            "technologie",
-            "cuisine",
-            "technologie",
-            "actualités",
-            "éducation",
-            "éducation",
-            "histoire",
-            "sport"
-        ]
-        
-        # Création et entraînement du vectoriseur TF-IDF
-        self.vectorizer = TfidfVectorizer()
-        X = self.vectorizer.fit_transform(texts)
-        
-        # Création et entraînement du modèle de classification Naive Bayes
-        self.classifier_model = MultinomialNB()
-        self.classifier_model.fit(X, categories)
-        
-        # Sauvegarde des modèles pour une utilisation future
-        os.makedirs("app", exist_ok=True)
-        joblib.dump(self.classifier_model, "app/model.joblib")
-        joblib.dump(self.vectorizer, "app/vectorizer.joblib")
-        
-        print("✅ Modèle de base créé et sauvegardé !")
+        try:
+            print("🔄 Création d'un modèle de base...")
+            
+            # Données d'exemple pour l'entraînement
+            texts = [
+                "Bonjour, comment puis-je vous aider ?",
+                "Quel temps fait-il aujourd'hui ?",
+                "Je cherche des informations sur l'intelligence artificielle",
+                "Comment faire une recette de gâteau au chocolat ?",
+                "Quelles sont les dernières actualités ?",
+                "Je cherche des cours de mathématiques",
+                "Parlez-moi de l'histoire de France",
+                "Quels sont les résultats du match de football ?"
+            ]
+            
+            labels = [
+                "accueil",
+                "météo",
+                "technologie",
+                "cuisine",
+                "actualités",
+                "éducation",
+                "histoire",
+                "sport"
+            ]
+            
+            # Prétraitement des textes
+            processed_texts = [preprocess_text(text) for text in texts]
+            
+            # Création et entraînement du modèle optimisé
+            self.optimize_ml_model(processed_texts, labels)
+            
+            print("✅ Modèle de base créé avec succès !")
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la création du modèle de base : {str(e)}")
+            raise
 
     def initialize_models(self):
         """
@@ -103,7 +157,7 @@ class Chatbot:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
             
-            # Chargement des modèles de classification
+            # Chargement des modèles de classification ML
             model_path = "app/model.joblib"
             vectorizer_path = "app/vectorizer.joblib"
             
@@ -114,37 +168,40 @@ class Chatbot:
                 print("⚠️ Modèles de classification non trouvés. Création d'un modèle de base...")
                 self.create_base_model()
             
+            # Chargement du modèle BERT pour la classification DL
+            self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+            self.bert_model = BertForSequenceClassification.from_pretrained(
+                "textattack/bert-base-uncased-imdb",
+                num_labels=len(self.bert_labels)
+            )
+            
             print("✅ Modèles chargés avec succès !")
         except Exception as e:
             print(f"❌ Erreur lors de l'initialisation des modèles: {str(e)}")
             raise
 
-    def preprocess_text(self, text: str) -> str:
+    def classify_with_bert(self, text: str) -> dict:
         """
-        Prétraite le texte pour la classification.
-        Effectue la tokenization, la suppression des mots vides et la lemmatization.
-        
-        Args:
-            text (str): Le texte à prétraiter
-            
-        Returns:
-            str: Le texte prétraité
+        Classifie un texte avec BERT et retourne la catégorie prédite et la confiance.
         """
-        text = text.lower()  # Conversion en minuscules
-        text = text.translate(str.maketrans('', '', string.punctuation))  # Suppression de la ponctuation
-        tokens = word_tokenize(text)  # Tokenization
-        tokens = [word for word in tokens if word not in stopwords.words('english')]  # Suppression des mots vides
-        tokens = [WordNetLemmatizer().lemmatize(word) for word in tokens]  # Lemmatization
-        return " ".join(tokens)
+        inputs = self.bert_tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
+        outputs = self.bert_model(**inputs)
+        logits = outputs.logits.detach().numpy()[0]
+        probs = np.exp(logits) / np.sum(np.exp(logits))
+        pred_idx = np.argmax(probs)
+        return {
+            "category": self.bert_labels[pred_idx] if pred_idx < len(self.bert_labels) else "autre",
+            "confidence": float(probs[pred_idx]),
+            "embeddings": outputs.hidden_states[-1][0][0].detach().numpy().tolist() if hasattr(outputs, 'hidden_states') else None
+        }
 
-    def generate_response(self, user_input: str) -> Dict[str, Any]:
+    def generate_response(self, user_input: str, use_dl: bool = False) -> Dict[str, Any]:
         """
         Génère une réponse basée sur l'entrée de l'utilisateur.
         Combine la classification et la génération de texte.
-        
         Args:
             user_input (str): Le message de l'utilisateur
-            
+            use_dl (bool): Si True, utilise BERT pour la classification
         Returns:
             Dict[str, Any]: La réponse générée avec sa catégorie et sa confiance
         """
@@ -152,12 +209,24 @@ class Chatbot:
             response = {
                 "text": "",
                 "category": None,
-                "confidence": None
+                "confidence": None,
+                "embeddings": None
             }
             
-            # Classification du texte si le modèle est disponible
-            if self.classifier_model and self.vectorizer:
-                clean_text = self.preprocess_text(user_input)
+            # Classification du texte
+            if use_dl and self.bert_model and self.bert_tokenizer:
+                bert_result = self.classify_with_bert(user_input)
+                response["category"] = bert_result["category"]
+                response["confidence"] = bert_result["confidence"]
+                response["embeddings"] = bert_result["embeddings"]
+            elif self.optimized_model:  # Utilisation du modèle optimisé si disponible
+                clean_text = preprocess_text(user_input)
+                prediction = self.optimized_model.predict([clean_text])[0]
+                confidence = self.optimized_model.predict_proba([clean_text]).max()
+                response["category"] = prediction
+                response["confidence"] = float(confidence)
+            elif self.classifier_model and self.vectorizer:  # Fallback sur le modèle non optimisé
+                clean_text = preprocess_text(user_input)
                 vect = self.vectorizer.transform([clean_text])
                 prediction = self.classifier_model.predict(vect)[0]
                 confidence = self.classifier_model.predict_proba(vect).max()
@@ -165,25 +234,18 @@ class Chatbot:
                 response["confidence"] = float(confidence)
             
             # Génération de réponse avec DialoGPT
-            input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, 
-                                            return_tensors='pt')
-            
-            # Configuration de la génération de texte
+            input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
             output = self.model.generate(
                 input_ids,
-                max_length=1000,  # Longueur maximale de la réponse
+                max_length=1000,
                 pad_token_id=self.tokenizer.eos_token_id,
-                no_repeat_ngram_size=3,  # Évite la répétition de phrases
-                do_sample=True,  # Active la génération stochastique
-                top_k=100,  # Limite le nombre de tokens considérés
-                top_p=0.7,  # Filtre les tokens par probabilité cumulative
-                temperature=0.8  # Contrôle la créativité de la génération
+                no_repeat_ngram_size=3,
+                do_sample=True,
+                top_k=100,
+                top_p=0.7,
+                temperature=0.8
             )
-            
-            # Décodage de la réponse générée
-            response["text"] = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], 
-                                                   skip_special_tokens=True)
-            
+            response["text"] = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
             return response
             
         except Exception as e:
@@ -191,7 +253,8 @@ class Chatbot:
             return {
                 "text": "Désolé, une erreur s'est produite. Veuillez réessayer.",
                 "category": None,
-                "confidence": None
+                "confidence": None,
+                "embeddings": None
             }
 
     def cleanup(self):
@@ -207,13 +270,19 @@ class Chatbot:
             del self.classifier_model
         if self.vectorizer:
             del self.vectorizer
+        if self.bert_tokenizer:
+            del self.bert_tokenizer
+        if self.bert_model:
+            del self.bert_model
+        if self.optimized_model:
+            del self.optimized_model
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
 
 if __name__ == "__main__":
     # Test simple du chatbot en mode console
     chatbot = Chatbot()
-    print("🤖 Chatbot initialisé ! Tapez 'quit' pour quitter.")
+    print("�� Chatbot initialisé ! Tapez 'quit' pour quitter.")
     
     while True:
         user_input = input("Vous : ")
