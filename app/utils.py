@@ -14,11 +14,24 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import wikipedia
 from transformers import pipeline
+from functools import lru_cache
 
 # Téléchargement des ressources NLTK nécessaires pour le traitement du texte
 nltk.download('punkt')  # Pour la tokenization
 nltk.download('stopwords')  # Pour la suppression des mots vides
 nltk.download('wordnet')  # Pour la lemmatization
+
+# Initialisation du modèle de résumé en variable globale
+summarizer = None
+
+def get_summarizer():
+    """
+    Retourne l'instance du modèle de résumé, en le créant si nécessaire.
+    """
+    global summarizer
+    if summarizer is None:
+        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    return summarizer
 
 def cleaning(sentence: str) -> str:
     """
@@ -116,6 +129,7 @@ def format_math_formulas(text: str) -> str:
     
     return text
 
+@lru_cache(maxsize=100)
 def summarize_text(text: str) -> str:
     """
     Résume un texte en utilisant BART.
@@ -125,8 +139,8 @@ def summarize_text(text: str) -> str:
         str: Le résumé du texte
     """
     try:
-        # Initialisation du modèle de résumé
-        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        # Utilisation du modèle de résumé singleton
+        summarizer = get_summarizer()
         
         # Découpage du texte en morceaux si nécessaire (BART a une limite de 1024 tokens)
         max_chunk_length = 1000

@@ -39,17 +39,18 @@ st.markdown("""
     }
     /* Style pour les messages de l'utilisateur */
     .chat-message.user {
-        background-color: #2b313e;
+        background-color: #e3f2fd;
+        color: #000000;
     }
     /* Style pour les messages du bot */
     .chat-message.bot {
-        background-color: #475063;
+        background-color: #f5f5f5;
+        color: #000000;
     }
-    /* Style pour le contenu des messages */
-    .chat-message .content {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
+    /* Style pour le texte des messages */
+    .chat-message .message {
+        flex: 1;
+        color: #000000 !important;
     }
     /* Style pour les avatars */
     .chat-message .avatar {
@@ -57,10 +58,6 @@ st.markdown("""
         height: 40px;
         border-radius: 50%;
         margin-right: 1rem;
-    }
-    /* Style pour le texte des messages */
-    .chat-message .message {
-        flex: 1;
     }
     /* Style pour les boutons de fonction */
     .function-button {
@@ -91,9 +88,29 @@ st.markdown("""
     }
     .user-message {
         background-color: #e3f2fd;
+        color: #000000 !important;
     }
     .bot-message {
         background-color: #f5f5f5;
+        color: #000000 !important;
+    }
+    /* Style pour le texte dans les messages Streamlit */
+    .stChatMessage [data-testid="stMarkdownContainer"] p {
+        color: #000000 !important;
+    }
+    .stChatMessage [data-testid="stMarkdownContainer"] {
+        color: #000000 !important;
+    }
+    /* Style pour les messages d'erreur et d'info */
+    .stAlert {
+        color: #000000 !important;
+    }
+    .stAlert [data-testid="stMarkdownContainer"] {
+        color: #000000 !important;
+    }
+    /* Style pour les captions */
+    .stCaption {
+        color: #000000 !important;
     }
     .loading-container {
         display: flex;
@@ -121,6 +138,11 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 10px;
+    }
+    .loading-message img {
+        width: 50px;
+        height: 50px;
+        object-fit: contain;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -159,96 +181,113 @@ def main():
     
     # Initialisation des sessions
     if "chatbot" not in st.session_state:
-        st.session_state.chatbot = Chatbot()
+        with st.spinner("Chargement des modèles..."):
+            st.session_state.chatbot = Chatbot()
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
 
-    # Sélection de la fonction
-    function = st.radio(
-        "Choisissez une fonction, kero 🐸",
-        ["Classification", "Résumé de texte", "Recherche Wikipedia"],
-        horizontal=True
-    )
+    # Création de deux colonnes
+    col1, col2 = st.columns([1, 3])
 
-    # Sélection du mode selon la fonction
-    if function == "Classification":
-        model_type = st.radio(
-            "Choisisissez votre type de modèle pour réaliser la prédiction, kero 🐸",
-            ["ML Classique (Naive Bayes)", "Deep Learning (BERT)"],
-            horizontal=True
-        )
-        use_dl = model_type == "Deep Learning (BERT)"
-    elif function == "Résumé de texte":
-        model_type = st.radio(
-            "Choisisissez votre type de modèle pour le résumé, kero 🐸",
-            ["ML Classique (TF-IDF)", "Deep Learning (BART)"],
-            horizontal=True
-        )
-        use_dl = model_type == "Deep Learning (BART)"
-
-    # Zone de chat
-    st.subheader("💬🐸Chat, kero")
-    
-    # Affichage des messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar="🐸" if message["role"] == "assistant" else "👤"):
-            # Affichage du contenu avec support LaTeX
-            st.markdown(message["content"], unsafe_allow_html=True)
-            if "category" in message and message["category"]:
-                st.info(f"Catégorie: {message['category']} (Confiance: {message['confidence']:.2%})")
-            if "embeddings" in message and message["embeddings"]:
-                st.caption("Embeddings BERT disponibles")
-
-    # Animation de chargement
-    if st.session_state.is_processing:
-        st.markdown("""
-        <div class="loading-container">
-            <div class="loading-message">
-                <div class="jumping-frog">🐸</div>
-                <div class="loading-text">Kero réfléchit...</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Zone de saisie
-    user_input = st.chat_input("Écrivez votre message ici...")
-
-    if user_input:
-        # Démarrage du traitement
-        st.session_state.is_processing = True
-        st.experimental_rerun()
-
-        # Ajout du message de l'utilisateur
-        st.session_state.messages.append({"role": "user", "content": user_input})
+    # Colonne de gauche pour les options
+    with col1:
+        st.markdown("### ⚙️ Options")
+        st.markdown("---")
         
-        # Traitement selon la fonction sélectionnée
-        if function == "Classification":
-            response = st.session_state.chatbot.generate_response(user_input, use_dl=use_dl)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response["text"],
-                "category": response["category"],
-                "confidence": response["confidence"],
-                "embeddings": response["embeddings"]
-            })
-        elif function == "Résumé de texte":
-            summary = st.session_state.chatbot.summarize_text(user_input, use_dl=use_dl)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": summary
-            })
-        elif function == "Recherche Wikipedia":
-            wiki_response = st.session_state.chatbot.search_wikipedia(user_input)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": wiki_response
-            })
+        # Sélection de la fonction
+        function = st.radio(
+            "Choisissez une fonction, kero 🐸",
+            ["Classification", "Résumé de texte", "Recherche Wikipedia"],
+            key="function_choice"
+        )
 
-        # Fin du traitement
-        st.session_state.is_processing = False
-        st.experimental_rerun()
+        # Sélection du mode selon la fonction
+        if function == "Classification":
+            model_type = st.radio(
+                "Type de modèle pour la prédiction",
+                ["ML Classique (Naive Bayes)", "Deep Learning (BERT)"],
+                key="classif_model"
+            )
+            use_dl = model_type == "Deep Learning (BERT)"
+        elif function == "Résumé de texte":
+            model_type = st.radio(
+                "Type de modèle pour le résumé",
+                ["ML Classique (TF-IDF)", "Deep Learning (BART)"],
+                key="summarize_model"
+            )
+            use_dl = model_type == "Deep Learning (BART)"
+
+    # Colonne de droite pour le chat
+    with col2:
+        st.subheader("💬🐸Chat, kero")
+        
+        # Affichage des messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"], avatar="🐸" if message["role"] == "assistant" else "👤"):
+                # Affichage du contenu avec support LaTeX
+                st.markdown(message["content"], unsafe_allow_html=True)
+                if "category" in message and message["category"]:
+                    st.info(f"Catégorie: {message['category']} (Confiance: {message['confidence']:.2%})")
+                if "embeddings" in message and message["embeddings"]:
+                    st.caption("Embeddings BERT disponibles")
+
+        # Animation de chargement
+        if st.session_state.is_processing:
+            st.markdown("""
+            <div class="loading-container">
+                <div class="loading-message">
+                    <img src="app/img/frog.gif" alt="Loading..." style="width: 50px; height: 50px;">
+                    <div class="loading-text">Kero réfléchit...</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Zone de saisie
+        user_input = st.text_input("Écrivez votre message ici...", key="chat_input")
+        send_button = st.button("Envoyer", key="send_button")
+
+        if send_button and user_input:
+            try:
+                # Ajout du message de l'utilisateur
+                st.session_state.messages.append({"role": "user", "content": user_input})
+                
+                # Démarrage du traitement
+                st.session_state.is_processing = True
+                
+                # Traitement selon la fonction sélectionnée
+                if function == "Classification":
+                    response = st.session_state.chatbot.generate_response(user_input, use_dl=use_dl)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response["text"],
+                        "category": response["category"],
+                        "confidence": response["confidence"],
+                        "embeddings": response["embeddings"]
+                    })
+                elif function == "Résumé de texte":
+                    summary = st.session_state.chatbot.summarize_text(user_input, use_dl=use_dl)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": summary
+                    })
+                elif function == "Recherche Wikipedia":
+                    wiki_response = st.session_state.chatbot.search_wikipedia(user_input)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": wiki_response
+                    })
+            except Exception as e:
+                st.error(f"Une erreur s'est produite : {str(e)}")
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": "Désolé, une erreur s'est produite. Veuillez réessayer."
+                })
+            finally:
+                # Fin du traitement
+                st.session_state.is_processing = False
+                st.experimental_rerun()
 
 if __name__ == "__main__":
     main()

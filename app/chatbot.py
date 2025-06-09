@@ -10,6 +10,7 @@ import joblib
 import numpy as np
 from typing import Optional, Dict, Any
 import time
+from functools import lru_cache
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -174,16 +175,21 @@ class Chatbot:
         """
         Classifie un texte avec BERT et retourne la catégorie prédite et la confiance.
         """
-        inputs = self.bert_tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
-        outputs = self.bert_model(**inputs)
-        logits = outputs.logits.detach().numpy()[0]
-        probs = np.exp(logits) / np.sum(np.exp(logits))
-        pred_idx = np.argmax(probs)
-        return {
-            "category": self.bert_labels[pred_idx] if pred_idx < len(self.bert_labels) else "autre",
-            "confidence": float(probs[pred_idx]),
-            "embeddings": outputs.hidden_states[-1][0][0].detach().numpy().tolist() if hasattr(outputs, 'hidden_states') else None
-        }
+        try:
+            inputs = self.bert_tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
+            with torch.no_grad():
+                outputs = self.bert_model(**inputs)
+            logits = outputs.logits.detach().numpy()[0]
+            probs = np.exp(logits) / np.sum(np.exp(logits))
+            pred_idx = np.argmax(probs)
+            return {
+                "category": self.bert_labels[pred_idx] if pred_idx < len(self.bert_labels) else "autre",
+                "confidence": float(probs[pred_idx]),
+                "embeddings": outputs.hidden_states[-1][0][0].detach().numpy().tolist() if hasattr(outputs, 'hidden_states') else None
+            }
+        except Exception as e:
+            print(f"❌ Erreur lors de la classification BERT: {str(e)}")
+            return {"category": "erreur", "confidence": 0.0, "embeddings": None}
 
     def search_wikipedia(self, query: str) -> str:
         """
@@ -194,7 +200,10 @@ class Chatbot:
             str: Le résumé de l'article Wikipedia
         """
         try:
-            return search_wikipedia(query)
+            result = search_wikipedia(query)
+            # Ajout du support LaTeX pour les formules mathématiques
+            result = result.replace("$", "$$")
+            return result
         except Exception as e:
             print(f"❌ Erreur lors de la recherche Wikipedia: {str(e)}")
             return "Désolé, je n'ai pas pu trouver d'informations sur ce sujet dans Wikipedia."
@@ -210,36 +219,45 @@ class Chatbot:
         """
         try:
             if use_dl:
-                return summarize_text(text)  # Utilise BART (DL)
-            else:
-                # Méthode ML avec TF-IDF
-                from nltk.tokenize import sent_tokenize
-                import numpy as np
-                from sklearn.feature_extraction.text import TfidfVectorizer
-                
-                # Découpage du texte en phrases
-                sentences = sent_tokenize(text)
-                
-                # Création du vectoriseur TF-IDF
-                vectorizer = TfidfVectorizer(stop_words='english')
-                tfidf_matrix = vectorizer.fit_transform(sentences)
-                
-                # Calcul des scores pour chaque phrase
-                sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
-                
-                # Sélection des phrases les plus importantes
-                num_sentences = min(3, len(sentences))  # Limite à 3 phrases
-                top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
-                top_indices.sort()  # Garde l'ordre original
-                
-                # Construction du résumé
-                summary = [sentences[i] for i in top_indices]
-                return " ".join(summary)
+                # Utilise BART (DL) avec gestion des erreurs
+                try:
+                    return summarize_text(text)
+                except Exception as e:
+                    print(f"❌ Erreur BART, passage en mode ML: {str(e)}")
+                    use_dl = False
+            
+            # Méthode ML avec TF-IDF
+            from nltk.tokenize import sent_tokenize
+            import numpy as np
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            
+            # Découpage du texte en phrases
+            sentences = sent_tokenize(text)
+            
+            if len(sentences) <= 3:
+                return text
+            
+            # Création du vectoriseur TF-IDF
+            vectorizer = TfidfVectorizer(stop_words='english')
+            tfidf_matrix = vectorizer.fit_transform(sentences)
+            
+            # Calcul des scores pour chaque phrase
+            sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
+            
+            # Sélection des phrases les plus importantes
+            num_sentences = min(3, len(sentences))  # Limite à 3 phrases
+            top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
+            top_indices.sort()  # Garde l'ordre original
+            
+            # Construction du résumé
+            summary = [sentences[i] for i in top_indices]
+            return " ".join(summary)
                 
         except Exception as e:
             print(f"❌ Erreur lors du résumé du texte: {str(e)}")
             return "Désolé, je n'ai pas pu résumer ce texte."
 
+    @lru_cache(maxsize=100)
     def generate_response(self, user_input: str, use_dl: bool = False) -> Dict[str, Any]:
         """
         Génère une réponse basée sur l'entrée de l'utilisateur.
@@ -248,57 +266,54 @@ class Chatbot:
             user_input (str): Le message de l'utilisateur
             use_dl (bool): Si True, utilise BERT pour la classification
         Returns:
-            Dict[str, Any]: La réponse générée avec sa catégorie et sa confiance
+            dict: La réponse générée avec la catégorie et la confiance
         """
         try:
-            response = {
-                "text": "",
-                "category": None,
-                "confidence": None,
-                "embeddings": None
-            }
-            
             # Classification du texte
-            if use_dl and self.bert_model and self.bert_tokenizer:
-                bert_result = self.classify_with_bert(user_input)
-                response["category"] = bert_result["category"]
-                response["confidence"] = bert_result["confidence"]
-                response["embeddings"] = bert_result["embeddings"]
-            elif self.optimized_model:  # Utilisation du modèle optimisé si disponible
-                clean_text = preprocess_text(user_input)
-                prediction = self.optimized_model.predict([clean_text])[0]
-                confidence = self.optimized_model.predict_proba([clean_text]).max()
-                response["category"] = prediction
-                response["confidence"] = float(confidence)
-            elif self.classifier_model and self.vectorizer:  # Fallback sur le modèle non optimisé
-                clean_text = preprocess_text(user_input)
-                vect = self.vectorizer.transform([clean_text])
-                prediction = self.classifier_model.predict(vect)[0]
-                confidence = self.classifier_model.predict_proba(vect).max()
-                response["category"] = prediction
-                response["confidence"] = float(confidence)
-            
-            # Génération de réponse avec DialoGPT
+            if use_dl:
+                classification = self.classify_with_bert(user_input)
+            else:
+                # Classification ML
+                processed_text = preprocess_text(user_input)
+                if self.vectorizer and self.classifier_model:
+                    features = self.vectorizer.transform([processed_text])
+                    prediction = self.classifier_model.predict(features)[0]
+                    confidence = self.classifier_model.predict_proba(features).max()
+                    classification = {
+                        "category": prediction,
+                        "confidence": float(confidence),
+                        "embeddings": None
+                    }
+                else:
+                    raise Exception("Modèle ML non initialisé")
+
+            # Génération de la réponse avec DialoGPT
             input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
-            output = self.model.generate(
+            response_ids = self.model.generate(
                 input_ids,
-                max_length=1000,
+                max_length=200,
                 pad_token_id=self.tokenizer.eos_token_id,
-                no_repeat_ngram_size=3,
+                no_repeat_ngram_size=2,
                 do_sample=True,
-                top_k=100,
-                top_p=0.7,
-                temperature=0.8
+                top_k=50,
+                top_p=0.9,
+                temperature=0.7,
+                early_stopping=True
             )
-            response["text"] = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
-            return response
-            
+            response = self.tokenizer.decode(response_ids[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
+
+            return {
+                "text": response,
+                "category": classification["category"],
+                "confidence": classification["confidence"],
+                "embeddings": classification["embeddings"]
+            }
         except Exception as e:
             print(f"❌ Erreur lors de la génération de la réponse: {str(e)}")
             return {
-                "text": "Désolé, une erreur s'est produite. Veuillez réessayer.",
-                "category": None,
-                "confidence": None,
+                "text": "Désolé, je n'ai pas pu traiter votre demande.",
+                "category": "erreur",
+                "confidence": 0.0,
                 "embeddings": None
             }
 
