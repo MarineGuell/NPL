@@ -1,14 +1,25 @@
-# Chatbot Intelligent
+# Chatbot Avancé
 
 Ce projet est un chatbot intelligent développé dans le cadre du cours de Natural Language Processing enseigné par Miotto à l'école Ynov. Le chatbot utilise des techniques avancées de traitement du langage naturel pour comprendre et répondre aux questions des utilisateurs.
 
 ## Fonctionnalités
 
-- Classification catégorielle de texte
-- Recherche sur Wikipedia
-- Résumé automatique de texte
+### Classification de Texte
+- Classification avec Machine Learning (Naive Bayes)
+- Classification avec Deep Learning (BERT)
+- Classification avec RNN (PyTorch)
+- Classification avec Keras (TensorFlow)
+
+### Traitement de Texte
+- Nettoyage de texte
+- Gestion des expressions régulières
+- Encodage (One-Hot, TF-IDF, Word2Vec, BERT)
+- Transformation (Lemmatisation, Stemming, Stop Words)
+
+### Autres Fonctionnalités
+- Recherche sur Wikipedia avec support LaTeX
+- Résumé automatique de texte (BART ou TF-IDF)
 - Interface utilisateur intuitive avec Streamlit
-- Monitoring des performances en temps réel
 - Prétraitement du texte avancé
 - API REST avec FastAPI
 - Documentation interactive avec Swagger UI
@@ -32,12 +43,20 @@ source venv/bin/activate  # Sur Windows : .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## Dépendances Principales
+
+- **Deep Learning** : PyTorch, TensorFlow, Transformers
+- **NLP** : NLTK, Gensim, Sentence-Transformers
+- **ML** : scikit-learn, pandas, numpy
+- **Web** : FastAPI, Streamlit, BeautifulSoup4
+- **Autres** : emoji, contractions, wikipedia
+
 ## Utilisation
 
 ### Interface Streamlit
 1. Lancer l'interface :
 ```bash
-python -m streamlit run app/interface.py
+streamlit run app/interface.py
 ```
 
 ### API FastAPI
@@ -61,8 +80,8 @@ NPL-1/
 │   ├── interface.py     # Interface utilisateur Streamlit
 │   ├── chatbot.py       # Logique du chatbot
 │   ├── utils.py         # Fonctions utilitaires
-│   ├── model.joblib     # Modèle de classification sauvegardé
-│   └── vectorizer.joblib # Vectoriseur de texte sauvegardé
+│   ├── models.py        # Modèles de classification
+│   └── models/          # Dossier pour les modèles sauvegardés
 ├── logs/                # Logs de l'application
 ├── requirements.txt     # Dépendances du projet
 └── README.md           # Documentation
@@ -70,26 +89,27 @@ NPL-1/
 
 ## Fonctionnalités Détaillées
 
-### 1. Classification Catégorielle
-- Analyse et classification automatique de textes
-- Utilisation d'un modèle entraîné pour la catégorisation
-- API endpoint pour la classification
+### 1. Classification de Texte
+- **Machine Learning** : Naive Bayes pour la classification rapide
+- **Deep Learning** :
+  - BERT pour la classification avancée
+  - RNN pour la classification séquentielle
+  - Keras pour la classification personnalisable
 
-### 2. Recherche Wikipedia
+### 2. Traitement de Texte
+- **Nettoyage** : Suppression des caractères spéciaux, URLs, etc.
+- **Regex** : Recherche et remplacement de patterns
+- **Encodage** : Conversion du texte en vecteurs
+- **Transformation** : Normalisation du texte
+
+### 3. Recherche Wikipedia
 - Recherche intelligente dans Wikipedia
 - Extraction et présentation des informations pertinentes
-- Endpoint API pour la recherche
+- Support des formules mathématiques en LaTeX
 
-### 3. Résumé de Texte
-- Génération automatique de résumés
-- Conservation des informations essentielles
-- API pour le résumé de texte
-
-### 4. Monitoring
-- Suivi des performances en temps réel
-- Statistiques d'utilisation
-- Métriques de performance
-- Logs détaillés
+### 4. Résumé de Texte
+- **Deep Learning** : BART pour des résumés de haute qualité
+- **Machine Learning** : TF-IDF pour des résumés rapides
 
 ### 5. API REST
 - Documentation interactive avec Swagger UI

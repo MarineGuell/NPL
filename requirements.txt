@@ -14,4 +14,12 @@ streamlit==1.29.0
 pandas==2.1.4
 plotly==5.18.0
 requests==2.31.0
-huggingface_hub[hf_xet]   
+huggingface_hub[hf_xet]
+#
+emoji==2.10.1
+contractions==0.1.73
+sentence-transformers==2.2.2
+beautifulsoup4==4.12.2
+tensorflow==2.19.0
+--find-links https://github.com/RaRe-Technologies/gensim-data/releases/download/4.2.0/
+gensim==4.2.0

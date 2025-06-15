@@ -11,13 +11,15 @@ import numpy as np
 from typing import Optional, Dict, Any
 import time
 from functools import lru_cache
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from transformers import AutoTokenizer, AutoModelForCausalLM, BertTokenizer, BertForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForCausalLM, BertTokenizer, BertForSequenceClassification, pipeline
+from sklearn.metrics import accuracy_score
 
 from utils import summarize_text, search_wikipedia, preprocess_text
+from models import SupervisedClassifier, DeepLearningClassifier, RNNTextClassifier, KerasTextClassifier
 
 class Chatbot:
     """
@@ -39,59 +41,72 @@ class Chatbot:
             "accueil", "météo", "technologie", "cuisine", "actualités",
             "éducation", "histoire", "sport"
         ]
+        self.classifier_ml = SupervisedClassifier()
+        self.classifier_dl = DeepLearningClassifier()
+        self.classifier_rnn = RNNTextClassifier()
+        self.classifier_keras = KerasTextClassifier()
+        self.sentiment_analyzer = pipeline("sentiment-analysis")
         self.initialize_models()
 
-    def optimize_ml_model(self, X_train, y_train):
-        """
-        Optimise les hyperparamètres du modèle ML (Naive Bayes) avec GridSearchCV.
-        Args:
-            X_train: Données d'entraînement
-            y_train: Labels d'entraînement
-        """
+    def optimize_ml_model(self, texts, labels):
+        """Optimise le modèle ML avec GridSearchCV"""
         try:
-            print("🔄 Optimisation des hyperparamètres du modèle ML...")
+            # Prétraitement des textes
+            processed_texts = [self.preprocess_text(text) for text in texts]
             
             # Création du pipeline
             pipeline = Pipeline([
-                ('tfidf', TfidfVectorizer()),
+                ('tfidf', TfidfVectorizer(max_features=5000)),
                 ('clf', MultinomialNB())
             ])
             
-            # Paramètres à optimiser
+            # Définition des paramètres à tester
             param_grid = {
-                'tfidf__max_features': [5000, 10000, 15000],
-                'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
-                'tfidf__min_df': [1, 2, 3],
+                'tfidf__max_features': [3000, 5000, 7000],
+                'tfidf__ngram_range': [(1, 1), (1, 2)],
                 'clf__alpha': [0.1, 0.5, 1.0]
             }
             
-            # GridSearchCV
+            # Calcul du nombre optimal de plis
+            n_samples = len(processed_texts)
+            n_splits = min(5, n_samples // 2)  # Utilise le minimum entre 5 et la moitié du nombre d'échantillons
+            if n_splits < 2:
+                n_splits = 2  # Minimum 2 plis pour la validation croisée
+            
+            # Création du GridSearchCV avec le nombre de plis adapté
             grid_search = GridSearchCV(
                 pipeline,
                 param_grid,
-                cv=5,
-                scoring='accuracy',
+                cv=n_splits,
                 n_jobs=-1,
                 verbose=1
             )
             
-            # Entraînement
+            # Division des données en ensembles d'entraînement et de test
+            X_train, X_test, y_train, y_test = train_test_split(
+                processed_texts, labels,
+                test_size=0.2,
+                random_state=42,
+                stratify=labels
+            )
+            
+            # Entraînement du modèle
             grid_search.fit(X_train, y_train)
             
             # Sauvegarde du meilleur modèle
-            self.optimized_model = grid_search.best_estimator_
-            self.vectorizer = self.optimized_model.named_steps['tfidf']
-            self.classifier_model = self.optimized_model.named_steps['clf']
+            self.ml_model = grid_search.best_estimator_
             
-            print(f"✅ Optimisation terminée ! Meilleurs paramètres : {grid_search.best_params_}")
-            print(f"Score de validation : {grid_search.best_score_:.3f}")
+            # Évaluation du modèle
+            y_pred = self.ml_model.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            print(f"Meilleure précision : {accuracy:.2f}")
+            print(f"Meilleurs paramètres : {grid_search.best_params_}")
             
-            # Sauvegarde du modèle optimisé
-            joblib.dump(self.optimized_model, "app/optimized_model.joblib")
+            return accuracy
             
         except Exception as e:
-            print(f"❌ Erreur lors de l'optimisation du modèle : {str(e)}")
-            raise
+            print(f"Erreur lors de l'optimisation du modèle ML : {str(e)}")
+            return None
 
     def create_base_model(self):
         """
@@ -193,129 +208,68 @@ class Chatbot:
 
     def search_wikipedia(self, query: str) -> str:
         """
-        Effectue une recherche Wikipedia et retourne un résumé.
+        Recherche des informations sur Wikipedia.
+        
         Args:
             query (str): La requête de recherche
+            
         Returns:
-            str: Le résumé de l'article Wikipedia
+            str: Les informations trouvées
         """
         try:
-            result = search_wikipedia(query)
-            # Ajout du support LaTeX pour les formules mathématiques
-            result = result.replace("$", "$$")
-            return result
+            return search_wikipedia(query)
         except Exception as e:
-            print(f"❌ Erreur lors de la recherche Wikipedia: {str(e)}")
-            return "Désolé, je n'ai pas pu trouver d'informations sur ce sujet dans Wikipedia."
+            return f"Erreur lors de la recherche: {str(e)}"
 
     def summarize_text(self, text: str, use_dl: bool = True) -> str:
         """
-        Résume un texte en utilisant soit BART (DL) soit TF-IDF (ML).
+        Résume un texte.
+        
         Args:
             text (str): Le texte à résumer
-            use_dl (bool): Si True, utilise BART (DL), sinon utilise TF-IDF (ML)
+            use_dl (bool): Si True, utilise le modèle de deep learning
+            
         Returns:
-            str: Le résumé du texte
+            str: Le résumé généré
         """
         try:
-            if use_dl:
-                # Utilise BART (DL) avec gestion des erreurs
-                try:
-                    return summarize_text(text)
-                except Exception as e:
-                    print(f"❌ Erreur BART, passage en mode ML: {str(e)}")
-                    use_dl = False
-            
-            # Méthode ML avec TF-IDF
-            from nltk.tokenize import sent_tokenize
-            import numpy as np
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            
-            # Découpage du texte en phrases
-            sentences = sent_tokenize(text)
-            
-            if len(sentences) <= 3:
-                return text
-            
-            # Création du vectoriseur TF-IDF
-            vectorizer = TfidfVectorizer(stop_words='english')
-            tfidf_matrix = vectorizer.fit_transform(sentences)
-            
-            # Calcul des scores pour chaque phrase
-            sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
-            
-            # Sélection des phrases les plus importantes
-            num_sentences = min(3, len(sentences))  # Limite à 3 phrases
-            top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
-            top_indices.sort()  # Garde l'ordre original
-            
-            # Construction du résumé
-            summary = [sentences[i] for i in top_indices]
-            return " ".join(summary)
-                
+            return summarize_text(text, use_dl)
         except Exception as e:
-            print(f"❌ Erreur lors du résumé du texte: {str(e)}")
-            return "Désolé, je n'ai pas pu résumer ce texte."
+            return f"Erreur lors du résumé: {str(e)}"
 
     @lru_cache(maxsize=100)
-    def generate_response(self, user_input: str, use_dl: bool = False) -> Dict[str, Any]:
+    def generate_response(self, text: str, use_dl: bool = False, model_type: str = "bert") -> str:
         """
-        Génère une réponse basée sur l'entrée de l'utilisateur.
-        Combine la classification et la génération de texte.
+        Génère une réponse en fonction du texte d'entrée.
+        
         Args:
-            user_input (str): Le message de l'utilisateur
-            use_dl (bool): Si True, utilise BERT pour la classification
+            text (str): Le texte à analyser
+            use_dl (bool): Si True, utilise le modèle de deep learning
+            model_type (str): Type de modèle DL ("bert", "rnn" ou "keras")
+            
         Returns:
-            dict: La réponse générée avec la catégorie et la confiance
+            str: La réponse générée
         """
         try:
-            # Classification du texte
             if use_dl:
-                classification = self.classify_with_bert(user_input)
+                if model_type == "bert":
+                    sentiment = self.sentiment_analyzer(text)[0]
+                    return f"Sentiment: {sentiment['label']} (Confiance: {sentiment['score']:.2f})"
+                elif model_type == "rnn":
+                    predictions, probs = self.classifier_rnn.predict([text])
+                    sentiment = "POSITIVE" if predictions[0] == 1 else "NEGATIVE"
+                    confidence = probs[0][predictions[0]]
+                    return f"Sentiment: {sentiment} (Confiance: {confidence:.2f})"
+                else:  # keras
+                    predictions, probs = self.classifier_keras.predict([text])
+                    sentiment = "POSITIVE" if predictions[0] == 1 else "NEGATIVE"
+                    confidence = probs[0][predictions[0]]
+                    return f"Sentiment: {sentiment} (Confiance: {confidence:.2f})"
             else:
-                # Classification ML
-                processed_text = preprocess_text(user_input)
-                if self.vectorizer and self.classifier_model:
-                    features = self.vectorizer.transform([processed_text])
-                    prediction = self.classifier_model.predict(features)[0]
-                    confidence = self.classifier_model.predict_proba(features).max()
-                    classification = {
-                        "category": prediction,
-                        "confidence": float(confidence),
-                        "embeddings": None
-                    }
-                else:
-                    raise Exception("Modèle ML non initialisé")
-
-            # Génération de la réponse avec DialoGPT
-            input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
-            response_ids = self.model.generate(
-                input_ids,
-                max_length=200,
-                pad_token_id=self.tokenizer.eos_token_id,
-                no_repeat_ngram_size=2,
-                do_sample=True,
-                top_k=50,
-                top_p=0.9,
-                temperature=0.7,
-                early_stopping=True
-            )
-            response = self.tokenizer.decode(response_ids[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
-
-            return {
-                "text": response,
-                "category": classification["category"],
-                "confidence": classification["confidence"],
-                "embeddings": classification["embeddings"]
-            }
+                sentiment = self.classifier_ml.predict([text])[0]
+                return f"Sentiment: {sentiment}"
         except Exception as e:
-            print(f"❌ Erreur lors de la génération de la réponse: {str(e)}")
-            return {
-                "text": "Désolé, je n'ai pas pu traiter votre demande.",
-                "category": "erreur",
-                "confidence": 0.0,
-                "embeddings": None
-            }
+            return f"Erreur lors de l'analyse: {str(e)}"
 
     def cleanup(self):
         """
