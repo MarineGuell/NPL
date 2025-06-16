@@ -483,4 +483,89 @@ def save_vectors(vectors, filename: str, format: str = 'numpy'):
     elif format == 'json':
         pd.DataFrame(vectors).to_json(filename)
 
+def apply_regex(text: str, pattern: str) -> list:
+    """
+    Applique une expression régulière à un texte et retourne les correspondances.
+    
+    Args:
+        text (str): Le texte sur lequel appliquer l'expression régulière
+        pattern (str): L'expression régulière à appliquer
+        
+    Returns:
+        list: Liste des correspondances trouvées
+    """
+    try:
+        matches = re.findall(pattern, text)
+        return matches
+    except re.error as e:
+        print(f"Erreur dans l'expression régulière : {str(e)}")
+        return []
+
+def encode_text(text: str, method: str = 'tfidf', **kwargs) -> np.ndarray:
+    """
+    Encode un texte en utilisant différentes méthodes d'encodage.
+    
+    Args:
+        text (str): Le texte à encoder
+        method (str): La méthode d'encodage ('tfidf', 'count', 'bert', 'word2vec')
+        **kwargs: Arguments supplémentaires pour les différentes méthodes
+        
+    Returns:
+        np.ndarray: Le texte encodé sous forme de vecteur
+    """
+    if method == 'tfidf':
+        vectorizer = TfidfVectorizer(**kwargs)
+        return vectorizer.fit_transform([text]).toarray()
+    
+    elif method == 'count':
+        vectorizer = CountVectorizer(**kwargs)
+        return vectorizer.fit_transform([text]).toarray()
+    
+    elif method == 'bert':
+        model_name = kwargs.get('model_name', 'bert-base-uncased')
+        model = SentenceTransformer(model_name)
+        return model.encode([text])
+    
+    elif method == 'word2vec':
+        # Nécessite un modèle word2vec pré-entraîné
+        if 'word2vec_model' not in kwargs:
+            raise ValueError("Un modèle word2vec doit être fourni pour cette méthode")
+        model = kwargs['word2vec_model']
+        words = text.split()
+        word_vectors = [model[word] for word in words if word in model]
+        if not word_vectors:
+            return np.zeros((1, model.vector_size))
+        return np.mean(word_vectors, axis=0).reshape(1, -1)
+    
+    else:
+        raise ValueError(f"Méthode d'encodage non supportée : {method}")
+
+def transform_text(text: str, transformations: list = None) -> str:
+    """
+    Applique une série de transformations à un texte.
+    
+    Args:
+        text (str): Le texte à transformer
+        transformations (list): Liste des transformations à appliquer. Chaque transformation
+                              doit être un tuple (fonction, args, kwargs)
+    
+    Returns:
+        str: Le texte transformé
+    """
+    if transformations is None:
+        transformations = [
+            (clean_text, (), {'remove_html': True, 'remove_emojis': True}),
+            (preprocess_text, (), {})
+        ]
+    
+    transformed_text = text
+    for func, args, kwargs in transformations:
+        try:
+            transformed_text = func(transformed_text, *args, **kwargs)
+        except Exception as e:
+            print(f"Erreur lors de l'application de {func.__name__}: {str(e)}")
+            continue
+    
+    return transformed_text
+
 
