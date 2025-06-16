@@ -141,10 +141,40 @@ class Chatbot:
             # Prétraitement des textes
             processed_texts = [preprocess_text(text) for text in texts]
             
-            # Création et entraînement du modèle optimisé
-            self.optimize_ml_model(processed_texts, labels)
+            # Liste de mots vides en français
+            french_stop_words = [
+                'le', 'la', 'les', 'un', 'une', 'des', 'et', 'ou', 'mais', 'donc', 'car', 'ni',
+                'ce', 'cet', 'cette', 'ces', 'mon', 'ton', 'son', 'notre', 'votre', 'leur',
+                'qui', 'que', 'quoi', 'dont', 'où', 'comment', 'pourquoi', 'quand',
+                'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles',
+                'être', 'avoir', 'faire', 'dire', 'aller', 'voir', 'venir',
+                'de', 'du', 'des', 'à', 'au', 'aux', 'en', 'dans', 'sur', 'sous',
+                'par', 'pour', 'avec', 'sans', 'vers', 'chez', 'entre', 'parmi'
+            ]
             
-            print("✅ Modèle de base créé avec succès !")
+            # Création du vectoriseur avec les mots vides en français
+            self.vectorizer = TfidfVectorizer(
+                max_features=5000,
+                ngram_range=(1, 2),
+                stop_words=french_stop_words
+            )
+            
+            # Transformation des textes
+            X = self.vectorizer.fit_transform(processed_texts)
+            
+            # Création et entraînement du classificateur
+            self.classifier_model = MultinomialNB(alpha=0.1)
+            self.classifier_model.fit(X, labels)
+            
+            # Sauvegarde des modèles
+            model_dir = "app"
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            
+            joblib.dump(self.classifier_model, os.path.join(model_dir, "model.joblib"))
+            joblib.dump(self.vectorizer, os.path.join(model_dir, "vectorizer.joblib"))
+            
+            print("✅ Modèle de base créé et sauvegardé avec succès !")
             
         except Exception as e:
             print(f"❌ Erreur lors de la création du modèle de base : {str(e)}")
@@ -167,21 +197,51 @@ class Chatbot:
             vectorizer_path = "app/vectorizer.joblib"
             
             if os.path.exists(model_path) and os.path.exists(vectorizer_path):
+                print("🔄 Chargement des modèles ML existants...")
                 self.classifier_model = joblib.load(model_path)
                 self.vectorizer = joblib.load(vectorizer_path)
+                
+                # Vérification que les modèles sont correctement chargés
+                if self.classifier_model is None or self.vectorizer is None:
+                    raise ValueError("Les modèles ML n'ont pas été correctement chargés")
+                
+                # Test du modèle avec un texte simple
+                test_text = "Test d'initialisation du modèle ML"
+                test_processed = preprocess_text(test_text)
+                test_vector = self.vectorizer.transform([test_processed])
+                test_pred = self.classifier_model.predict(test_vector)
+                
+                if test_pred is None:
+                    raise ValueError("Le modèle ML ne produit pas de prédictions")
+                
+                print("✅ Modèles ML chargés avec succès !")
             else:
                 print("⚠️ Modèles de classification non trouvés. Création d'un modèle de base...")
                 self.create_base_model()
             
             # Chargement du modèle BERT pour la classification DL
+            print("🔄 Chargement du modèle BERT...")
             self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
             self.bert_model = BertForSequenceClassification.from_pretrained(
                 "bert-base-uncased",
                 num_labels=len(self.bert_labels),
-                ignore_mismatched_sizes=True
+                output_hidden_states=True
             )
             
-            print("✅ Modèles chargés avec succès !")
+            # Vérification que le modèle BERT est bien chargé
+            if self.bert_model is None or self.bert_tokenizer is None:
+                raise ValueError("Le modèle BERT n'a pas été correctement initialisé")
+            
+            # Test du modèle BERT avec un texte simple
+            test_text = "Test d'initialisation du modèle BERT"
+            test_inputs = self.bert_tokenizer(test_text, return_tensors="pt", truncation=True, padding=True)
+            test_outputs = self.bert_model(**test_inputs)
+            
+            if test_outputs is None:
+                raise ValueError("Le modèle BERT ne produit pas de sorties")
+            
+            print("✅ Tous les modèles ont été chargés avec succès !")
+            
         except Exception as e:
             print(f"❌ Erreur lors de l'initialisation des modèles: {str(e)}")
             raise
@@ -191,17 +251,46 @@ class Chatbot:
         Classifie un texte avec BERT et retourne la catégorie prédite et la confiance.
         """
         try:
-            inputs = self.bert_tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
+            if self.bert_model is None or self.bert_tokenizer is None:
+                raise ValueError("Le modèle BERT n'est pas initialisé")
+            
+            # Prétraitement du texte
+            inputs = self.bert_tokenizer(
+                text,
+                return_tensors="pt",
+                truncation=True,
+                padding=True,
+                max_length=128
+            )
+            
+            # Désactivation du gradient pour l'inférence
             with torch.no_grad():
                 outputs = self.bert_model(**inputs)
-            logits = outputs.logits.detach().numpy()[0]
-            probs = np.exp(logits) / np.sum(np.exp(logits))
+            
+            # Vérification des sorties
+            if outputs is None or not hasattr(outputs, 'logits'):
+                raise ValueError("Le modèle BERT n'a pas produit de sorties valides")
+            
+            # Calcul des probabilités
+            logits = outputs.logits
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+            probs = probs.detach().numpy()[0]
+            
+            # Obtention de la prédiction
             pred_idx = np.argmax(probs)
+            confidence = float(probs[pred_idx])
+            
+            # Obtention des embeddings si disponibles
+            embeddings = None
+            if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
+                embeddings = outputs.hidden_states[-1][0][0].detach().numpy().tolist()
+            
             return {
                 "category": self.bert_labels[pred_idx] if pred_idx < len(self.bert_labels) else "autre",
-                "confidence": float(probs[pred_idx]),
-                "embeddings": outputs.hidden_states[-1][0][0].detach().numpy().tolist() if hasattr(outputs, 'hidden_states') else None
+                "confidence": confidence,
+                "embeddings": embeddings
             }
+            
         except Exception as e:
             print(f"❌ Erreur lors de la classification BERT: {str(e)}")
             return {"category": "erreur", "confidence": 0.0, "embeddings": None}
@@ -270,6 +359,45 @@ class Chatbot:
                 return f"Sentiment: {sentiment}"
         except Exception as e:
             return f"Erreur lors de l'analyse: {str(e)}"
+
+    def classify_text(self, text: str, use_dl: bool = False, model_type: str = "bert") -> str:
+        """
+        Classifie un texte en utilisant soit le modèle ML soit le modèle DL.
+        
+        Args:
+            text (str): Le texte à classifier
+            use_dl (bool): Si True, utilise le modèle de deep learning
+            model_type (str): Type de modèle DL ("bert", "rnn" ou "keras")
+            
+        Returns:
+            str: La catégorie prédite et la confiance
+        """
+        try:
+            if use_dl:
+                if model_type == "bert":
+                    result = self.classify_with_bert(text)
+                    return f"Catégorie prédite : {result['category']} (confiance : {result['confidence']:.2f})"
+                elif model_type == "rnn":
+                    result = self.classifier_rnn.predict(text)
+                    return f"Catégorie prédite : {result['category']} (confiance : {result['confidence']:.2f})"
+                elif model_type == "keras":
+                    result = self.classifier_keras.predict(text)
+                    return f"Catégorie prédite : {result['category']} (confiance : {result['confidence']:.2f})"
+                else:
+                    return "Type de modèle DL non supporté"
+            else:
+                # Utilisation du modèle ML
+                processed_text = preprocess_text(text)
+                if self.classifier_model and self.vectorizer:
+                    X = self.vectorizer.transform([processed_text])
+                    prediction = self.classifier_model.predict(X)[0]
+                    probabilities = self.classifier_model.predict_proba(X)[0]
+                    confidence = max(probabilities)
+                    return f"Catégorie prédite : {prediction} (confiance : {confidence:.2f})"
+                else:
+                    return "Modèle ML non initialisé"
+        except Exception as e:
+            return f"Erreur lors de la classification : {str(e)}"
 
     def cleanup(self):
         """
