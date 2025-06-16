@@ -35,7 +35,7 @@ cd NPL-1
 2. Créer un environnement virtuel :
 ```bash
 python -m venv venv
-source venv/bin/activate  # Sur Windows : .venv\Scripts\activate
+venv\Scripts\activate
 ```
 
 3. Installer les dépendances :
