@@ -39,17 +39,17 @@ class Message(BaseModel):
 async def root():
     return {"message": "Bienvenue sur l'API du Chatbot"}
 
-# Route pour obtenir les métriques actuelles du système
-@app.get("/metrics")
-async def get_metrics():
-    """Endpoint pour obtenir les métriques actuelles du système"""
-    return monitoring.get_metrics()
+# # Route pour obtenir les métriques actuelles du système
+# @app.get("/metrics")
+# async def get_metrics():
+#     """Endpoint pour obtenir les métriques actuelles du système"""
+#     return monitoring.get_metrics()
 
-# Route pour obtenir un résumé des performances
-@app.get("/performance")
-async def get_performance():
-    """Endpoint pour obtenir un résumé des performances du système"""
-    return monitoring.get_performance_summary()
+# # Route pour obtenir un résumé des performances
+# @app.get("/performance")
+# async def get_performance():
+#     """Endpoint pour obtenir un résumé des performances du système"""
+#     return monitoring.get_performance_summary()
 
 # Route principale de chat - Traite les messages et génère des réponses
 @app.post("/chat")
@@ -64,6 +64,26 @@ async def chat(message: Message):
         monitoring.log_request(message.text, response, processing_time)
         
         return response
+    except Exception as e:
+        # Gestion des erreurs avec logging
+        processing_time = time.time() - start_time
+        monitoring.log_request(message.text, {"text": str(e)}, processing_time, error=e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Route pour la classification
+@app.post("/classify")
+async def classify(message: Message):
+    start_time = time.time()
+    try:
+        # Classification du message
+        result = chatbot.classify_text(message.text)
+        response = {"text": result, "category": "classification", "confidence": 1.0}
+        processing_time = time.time() - start_time
+        
+        # Log de la requête
+        monitoring.log_request(message.text, response, processing_time)
+        
+        return response 
     except Exception as e:
         # Gestion des erreurs avec logging
         processing_time = time.time() - start_time
@@ -112,7 +132,7 @@ async def summarize(message: Message):
 
 # Point d'entrée du script
 if __name__ == "__main__":
-    print("🚀 Démarrage du serveur Chatbot API...")
+    print("C'est parti, Kero ! 🐸")
     print("📝 Documentation disponible sur : http://localhost:8000/docs")
     # Démarrage du serveur avec hot-reload activé
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

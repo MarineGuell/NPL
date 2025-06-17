@@ -42,14 +42,8 @@ venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
+   python app/train.py
 
-## Dépendances Principales
-
-- **Deep Learning** : PyTorch, TensorFlow, Transformers
-- **NLP** : NLTK, Gensim, Sentence-Transformers
-- **ML** : scikit-learn, pandas, numpy
-- **Web** : FastAPI, Streamlit, BeautifulSoup4
-- **Autres** : emoji, contractions, wikipedia
 
 ## Utilisation
 
@@ -128,7 +122,7 @@ Ce projet est sous licence MIT.
 ## Auteurs
 
 - Développé dans le cadre du cours de Natural Language Processing
-- Enseignant : Miotto
+- Enseignant : Nicolas Miotto
 - École : Ynov
 
 🚀 Démarrage du serveur Chatbot API...

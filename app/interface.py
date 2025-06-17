@@ -25,118 +25,20 @@ from models import SupervisedClassifier, DeepLearningClassifier, RNNTextClassifi
 
 # Configuration de la page Streamlit
 st.set_page_config(
-    page_title="Kero Chatbot",
+    page_title="Kaeru Chatbot",
     page_icon="🐸",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Style CSS personnalisé pour l'interface
-st.markdown("""
-    <style>
-    /* Thème sombre global */
-    .stApp {
-        background-color: #1E1E1E;
-        color: #FFFFFF;
-    }
-    
-    /* Style pour la sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #2D2D2D;
-        color: #FFFFFF;
-    }
-    
-    [data-testid="stSidebar"] .stRadio > div {
-        color: #FFFFFF;
-    }
-    
-    [data-testid="stSidebar"] .stCheckbox > div {
-        color: #FFFFFF;
-    }
-    
-    [data-testid="stSidebar"] .stSelectbox > div {
-        color: #FFFFFF;
-    }
-    
-    /* Style pour les messages de chat */
-    .stChatMessage {
-        background-color: #2D2D2D;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-    }
-    
-    /* Style pour les messages de l'utilisateur */
-    .stChatMessage[data-testid="stChatMessage"] {
-        background-color: #3D3D3D;
-    }
-    
-    /* Style pour les messages du bot */
-    .stChatMessage[data-testid="stChatMessage"] [data-testid="chatAvatarIcon"] {
-        background-color: #4CAF50;
-    }
-    
-    /* Style pour le texte */
-    .stMarkdown {
-        color: #FFFFFF;
-    }
-    
-    /* Style pour les titres */
-    h1, h2, h3 {
-        color: #FFFFFF;
-    }
-    
-    /* Style pour la zone de saisie */
-    .stTextInput>div>div>input {
-        background-color: #3D3D3D;
-        color: #FFFFFF;
-        border: 1px solid #4CAF50;
-    }
-    
-    /* Style pour les boutons */
-    .stButton>button {
-        background-color: #4CAF50;
-        color: #FFFFFF;
-        border: none;
-        border-radius: 5px;
-        padding: 0.5rem 1rem;
-    }
-    
-    .stButton>button:hover {
-        background-color: #45a049;
-    }
-    
-    /* Style pour les spinners */
-    .stSpinner {
-        color: #4CAF50;
-    }
-    
-    /* Style pour les alertes */
-    .stAlert {
-        background-color: #3D3D3D;
-        color: #FFFFFF;
-    }
-    
-    /* Ajustement de la marge pour le contenu principal */
-    .main .block-container {
-        padding-top: 1rem;
-        max-width: 100%;
-    }
-    
-    /* Style pour l'avatar du bot */
-    .bot-avatar {
-        background-color: #4CAF50;
-        color: #FFFFFF;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# Chargement du CSS externe
+def load_css():
+    css_file = os.path.join(os.path.dirname(__file__), "static", "style.css")
+    with open(css_file) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# Chargement du CSS
+load_css()
 
 # Initialisation des variables de session
 # Stocke l'historique des messages
@@ -168,7 +70,7 @@ def send_message(message, function_type="chat"):
         return None
 
 def main():
-    st.title("🐸 Kero Chatbot")
+    st.title("🐸 Kaeru Chatbot")
     
     # Initialisation des sessions
     if "chatbot" not in st.session_state:
@@ -193,9 +95,7 @@ def main():
         # Sélection de la fonction
         function = st.radio(
             "Choisissez une fonction, kero 🐸",
-            ["Classification", "Résumé de texte", "Recherche Wikipedia", 
-             "Nettoyage de texte", "Expressions régulières", "Transformation numérique",
-             "Classification supervisée"],
+            ["Classification", "Résumé de texte", "Recherche Wikipedia"],
             key="function_choice"
         )
 
@@ -203,48 +103,22 @@ def main():
         if function == "Classification":
             model_type = st.radio(
                 "Type de modèle pour la prédiction",
-                ["ML Classique (Naive Bayes)", "Deep Learning (BERT)", "RNN", "Keras"],
+                ["Machine Learning", "Deep Learning"],
                 key="classif_model"
             )
             use_dl = model_type != "ML Classique (Naive Bayes)"
+        
         elif function == "Résumé de texte":
             model_type = st.radio(
                 "Type de modèle pour le résumé",
-                ["ML Classique (TF-IDF)", "Deep Learning (BART)"],
+                ["Machine Learning", "Deep Learning"],
                 key="summarize_model"
             )
-            use_dl = model_type == "Deep Learning (BART)"
-        elif function == "Nettoyage de texte":
-            st.markdown("### Options de nettoyage")
-            remove_html = st.checkbox("Supprimer le HTML", value=True)
-            remove_emojis = st.checkbox("Supprimer les emojis", value=True)
-            remove_urls = st.checkbox("Supprimer les URLs", value=True)
-            remove_emails = st.checkbox("Supprimer les emails", value=True)
-            remove_numbers = st.checkbox("Supprimer les nombres", value=False)
-            remove_punctuation = st.checkbox("Supprimer la ponctuation", value=False)
-        elif function == "Expressions régulières":
+            use_dl = model_type == "Deep Learning"
+
+        elif function == "Recherche Wikipedia":
             st.markdown("### Options de recherche")
-            regex_examples = get_regex_examples()
-            selected_pattern = st.selectbox(
-                "Choisir un motif prédéfini",
-                list(regex_examples.keys())
-            )
-            custom_pattern = st.text_input(
-                "Ou entrer votre propre expression régulière",
-                regex_examples[selected_pattern]
-            )
-        elif function == "Transformation numérique":
-            st.markdown("### Options de transformation")
-            transform_method = st.selectbox(
-                "Méthode de transformation",
-                ["TF-IDF", "Count Vectorizer", "BERT", "Word2Vec"]
-            )
-        elif function == "Classification supervisée":
-            st.markdown("### Options de classification")
-            classifier_type = st.selectbox(
-                "Type de classificateur",
-                ["SupervisedClassifier", "DeepLearningClassifier", "RNNTextClassifier", "KerasTextClassifier"]
-            )
+            search_query = st.text_input("Entrez votre requête de recherche")
 
     # Zone principale pour le chat et les résultats
     st.markdown("""
@@ -274,59 +148,17 @@ def main():
         with st.chat_message("assistant", avatar="🐸"):
             with st.spinner("Je réfléchis, kero..."):
                 if function == "Classification":
-                    if model_type == "ML Classique (Naive Bayes)":
+                    if model_type == "Machine Learning":
                         response = st.session_state.chatbot.classify_text(prompt, use_dl=False)
                     else:
                         response = st.session_state.chatbot.classify_text(prompt, use_dl=True)
                 elif function == "Résumé de texte":
-                    response = st.session_state.chatbot.summarize_text(prompt, use_dl=use_dl)
+                    if model_type == "Machine Learning":
+                        response = st.session_state.chatbot.classify_text(prompt, use_dl=False)
+                    else:
+                        response = st.session_state.chatbot.classify_text(prompt, use_dl=True)
                 elif function == "Recherche Wikipedia":
                     response = st.session_state.chatbot.search_wikipedia(prompt)
-                elif function == "Nettoyage de texte":
-                    response = clean_text(
-                        prompt,
-                        remove_html=remove_html,
-                        remove_emojis=remove_emojis,
-                        remove_urls=remove_urls,
-                        remove_emails=remove_emails,
-                        remove_numbers=remove_numbers,
-                        remove_punctuation=remove_punctuation
-                    )
-                elif function == "Expressions régulières":
-                    if validate_regex(custom_pattern):
-                        matches = apply_regex(prompt, custom_pattern)
-                        response = f"Correspondances trouvées : {matches}"
-                    else:
-                        response = "Expression régulière invalide"
-                elif function == "Transformation numérique":
-                    if transform_method == "TF-IDF":
-                        vectors, vectorizer = text_to_tfidf([prompt])
-                    elif transform_method == "Count Vectorizer":
-                        vectors, vectorizer = text_to_count([prompt])
-                    elif transform_method == "BERT":
-                        vectors = text_to_bert_embeddings([prompt])
-                        vectorizer = None
-                    else:  # Word2Vec
-                        vectors = text_to_word_embeddings([prompt])
-                        vectorizer = None
-                    
-                    st.session_state.vectors = vectors
-                    st.session_state.vectorizer = vectorizer
-                    
-                    vector_info = get_vectorization_info(vectors, vectorizer)
-                    response = f"Vecteurs créés avec {transform_method}:\n{vector_info}"
-                elif function == "Classification supervisée":
-                    if classifier_type == "SupervisedClassifier":
-                        classifier = SupervisedClassifier()
-                    elif classifier_type == "DeepLearningClassifier":
-                        classifier = DeepLearningClassifier()
-                    elif classifier_type == "RNNTextClassifier":
-                        classifier = RNNTextClassifier()
-                    else:  # KerasTextClassifier
-                        classifier = KerasTextClassifier()
-                    
-                    st.session_state.classifier = classifier
-                    response = f"Classificateur {classifier_type} initialisé"
                 
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 st.markdown(response)
