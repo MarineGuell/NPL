@@ -2,12 +2,18 @@ pandas
 numpy
 scikit-learn
 tensorflow
+tf-keras
 nltk
 matplotlib
 joblib
 regex
-
+transformers
+torch
 streamlit
-nltk
 wikipedia
+fastapi
+uvicorn
 
+wikipedia
+arxiv
+tqdm
