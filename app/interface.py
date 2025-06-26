@@ -1,5 +1,33 @@
 """
-Interface utilisateur du chatbot développée avec Streamlit.
+Interface Utilisateur Streamlit - Chatbot Kaeru
+
+Interface graphique du chatbot Kaeru développée avec Streamlit.
+Personnalité : Grenouille japonaise qui ponctue ses phrases par "kero".
+
+5 Fonctions Principales Disponibles :
+1. Classification (Machine Learning) : TF-IDF + Naive Bayes optimisé
+2. Classification (Deep Learning) : LSTM bidirectionnel avec BatchNormalization  
+3. Summarization (Machine Learning) : Résumé extractif par similarité cosinus
+4. Summarization (Deep Learning) : Résumé extractif par autoencodeur
+5. Wikipedia Search : Recherche intelligente avec gestion d'ambiguïté
+
+Fonctionnalités de l'Interface :
+- Conversation persistante avec historique des messages
+- Sélection de fonction via sidebar radio buttons
+- Gestion intelligente de l'ambiguïté Wikipedia (boutons interactifs)
+- Messages personnalisés selon le niveau de confiance des modèles
+- Actions descriptives de la grenouille (*hops excitedly*, *tilts head*, etc.)
+- Chargement automatique des modèles via l'orchestrateur
+
+Pipeline Utilisateur :
+1. Sélection de la fonction dans la sidebar
+2. Saisie du texte dans le chat input
+3. Prétraitement automatique par l'orchestrateur
+4. Prédiction avec le modèle approprié
+5. Affichage de la réponse formatée avec personnalité
+
+Tous les textes passent automatiquement par le pipeline de prétraitement
+et de transformation numérique avant d'être traités par les modèles.
 """
 
 import streamlit as st

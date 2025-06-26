@@ -1,5 +1,38 @@
 """
-Script pour faire des prédictions avec les modèles entraînés.
+Script de Prédiction Standalone - Chatbot Kaeru
+
+Script indépendant pour faire des prédictions avec les modèles entraînés du chatbot Kaeru.
+Permet d'utiliser les modèles sans passer par l'interface Streamlit.
+
+Fonctionnalités :
+- Chargement automatique des modèles depuis models/
+- Prédiction avec modèle ML (TF-IDF + Naive Bayes) ou DL (LSTM)
+- Prétraitement automatique des textes (même pipeline que l'orchestrateur)
+- Affichage des prédictions et niveaux de confiance
+- Exemples de textes prédéfinis pour test
+
+Modèles Chargés :
+- ml_model.joblib : Pipeline ML complet
+- dl_model.h5 : Modèle LSTM bidirectionnel
+- tokenizer.pkl : Tokenizer du modèle DL
+- encoder.pkl : LabelEncoder du modèle DL
+
+Pipeline de Prédiction :
+1. Chargement des modèles et objets associés depuis models/
+2. Prétraitement du texte (nettoyage, normalisation, stopwords, lemmatisation)
+3. Transformation numérique :
+   - ML : Vectorisation TF-IDF
+   - DL : Tokenization + padding
+4. Prédiction avec le modèle sélectionné
+5. Affichage du résultat et du niveau de confiance
+
+Usage :
+    python app/predict.py
+
+Configuration :
+    Modifier les exemples de textes dans main() pour tester différents cas
+    Changer use_dl=True/False pour alterner entre ML et DL
+    Tous les modèles doivent être entraînés via train_models.py avant utilisation
 """
 
 import joblib

@@ -1,5 +1,34 @@
 """
-Module d'utilitaires pour le prétraitement et le chargement des données.
+Module d'Utilitaires et Prétraitement - Pipeline de Données
+
+Ce module fournit les composants essentiels du pipeline de données du chatbot Kaeru :
+
+1. DataLoader : Chargement et préparation des datasets
+   - Lecture CSV avec nettoyage automatique (doublons, valeurs manquantes)
+   - Séparation textes/labels pour l'entraînement
+   - Split automatique train/test avec stratification
+
+2. TextPreprocessor : Prétraitement centralisé des textes
+   - Nettoyage complet : ponctuation, URLs, emails, caractères spéciaux
+   - Suppression des stopwords anglais et lemmatisation
+   - Normalisation (espaces multiples, début/fin)
+   - Pipeline appliqué à tous les textes (entraînement et inférence)
+
+3. extract_keywords : Extraction de mots-clés TF-IDF
+   - Utilisé pour la recherche Wikipedia intelligente
+   - Vectorisation TF-IDF avec bigrammes
+   - Sélection des termes les plus importants
+
+4. search_wikipedia_smart : Recherche Wikipedia intelligente
+   - Extraction automatique des mots-clés du texte utilisateur
+   - Recherche de pages Wikipedia correspondantes
+   - Gestion de l'ambiguïté avec suggestions interactives
+   - Retour de résumés formatés
+
+Pipeline de prétraitement standard :
+Texte brut → Nettoyage → Normalisation → Stopwords → Lemmatisation → Texte prêt
+
+Tous les composants sont optimisés pour la cohérence entre entraînement et inférence.
 """
 
 import pandas as pd

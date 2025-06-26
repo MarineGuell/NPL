@@ -1,21 +1,36 @@
 """
-Script d'entraînement des modèles ML, DL et autoencodeur pour le chatbot NLP.
+Script d'Entraînement Global - Chatbot Kaeru
 
-Pipeline détaillé :
-1. Chargement du dataset (CSV)
-2. Nettoyage des données (suppression doublons/NA)
-3. Séparation textes/labels
-4. Initialisation de l'orchestrateur (prétraitement, modèles, autoencodeur)
-5. Entraînement :
-   - ML : pipeline TF-IDF + Naive Bayes optimisé
-   - DL : LSTM bidirectionnel
-   - Autoencodeur : entraîné sur toutes les phrases du dataset pour le résumé extractif
-6. Sauvegarde des modèles
-7. Prêt pour l'inférence dans l'interface
+Script principal pour entraîner tous les modèles du chatbot Kaeru en une seule commande.
+Pipeline d'entraînement complet et automatisé.
+
+Pipeline d'Entraînement :
+1. Chargement du dataset CSV (balanced_dataset_50k.csv par défaut)
+2. Nettoyage automatique (suppression doublons, valeurs manquantes)
+3. Séparation textes/labels pour l'entraînement
+4. Initialisation de l'orchestrateur (prétraitement + modèles)
+5. Entraînement séquentiel :
+   - Modèle ML : Pipeline TF-IDF + Naive Bayes optimisé par GridSearchCV
+   - Modèle DL : LSTM bidirectionnel avec sauvegarde tokenizer/encoder
+   - Autoencodeur : Entraînement sur toutes les phrases du dataset
+6. Sauvegarde automatique de tous les modèles dans models/
+7. Évaluation et visualisations pour le modèle ML
+
+Modèles Entraînés :
+- ml_model.joblib : Pipeline ML complet + vectorizer
+- dl_model.h5 : Modèle LSTM + tokenizer.pkl + encoder.pkl
+- autoencoder_summarizer.h5 : Autoencodeur + autoencoder_tokenizer.pkl
+
+Visualisations Générées (app/plots/) :
+- ml_confusion_matrix.png : Matrice de confusion
+- ml_learning_curve.png : Courbe d'apprentissage
 
 Usage :
-    python train_models.py
-Modifie la variable DATASET_PATH pour choisir le dataset.
+    python app/train_models.py
+
+Configuration :
+    Modifier DATASET_PATH pour changer le dataset d'entraînement
+    Tous les modèles sont prêts pour l'inférence après l'entraînement
 """
 
 import os

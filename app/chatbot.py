@@ -1,6 +1,27 @@
 """
-Module Orchestrateur du Chatbot.
-Ce module connecte l'interface utilisateur, le prétraitement et les modèles.
+Module Orchestrateur du Chatbot Kaeru - Pipeline Central de NLP
+
+Ce module orchestre le pipeline complet du chatbot :
+- Interface utilisateur (Streamlit) ↔ Orchestrateur ↔ Modèles
+- Prétraitement centralisé (TextPreprocessor)
+- Classification (ML : TF-IDF+Naive Bayes, DL : LSTM bidirectionnel)
+- Résumé (ML : similarité cosinus, DL : autoencodeur extractif)
+- Recherche Wikipedia intelligente
+
+Pipeline de données :
+1. Réception texte utilisateur → Prétraitement (nettoyage, normalisation)
+2. Transformation numérique (vectorisation TF-IDF ou tokenization)
+3. Prédiction avec modèle approprié (ML/DL selon fonction)
+4. Formatage réponse avec personnalité grenouille japonaise
+
+Fonctions disponibles via l'interface :
+- Classification ML : Pipeline optimisé GridSearchCV
+- Classification DL : LSTM bidirectionnel avec BatchNormalization  
+- Résumé ML : Similarité cosinus TF-IDF (3 phrases les plus représentatives)
+- Résumé DL : Autoencodeur extractif (phrases les mieux reconstruites)
+- Recherche Wikipedia : Extraction mots-clés + recherche intelligente
+
+Tous les modèles sont automatiquement chargés depuis models/ et sauvegardés lors de l'entraînement.
 """
 
 from utils import TextPreprocessor

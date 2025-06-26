@@ -1,5 +1,37 @@
 """
-Module contenant les modèles de classification de texte.
+Module des Modèles de NLP - ML, DL et Autoencodeur
+
+Ce module contient les 3 modèles principaux du chatbot Kaeru :
+
+1. MLModel : Classification par Machine Learning
+   - Pipeline TF-IDF + Naive Bayes optimisé par GridSearchCV
+   - Sauvegarde automatique du vectorizer dans models/
+   - Évaluation complète (matrice confusion, courbe apprentissage)
+   - Prétraitement : nettoyage complet (ponctuation, URLs, stopwords, lemmatisation)
+
+2. DLModel : Classification par Deep Learning  
+   - Architecture LSTM bidirectionnel avec BatchNormalization
+   - Sauvegarde automatique du tokenizer et encoder dans models/
+   - Early stopping et validation split
+   - Même prétraitement que ML + tokenization Keras
+
+3. AutoencoderSummarizer : Résumé extractif par autoencodeur
+   - Découpage en phrases → Vectorisation → Autoencodeur → Erreur reconstruction
+   - Sélection des phrases avec erreur de reconstruction la plus faible
+   - Architecture : Embedding → LSTM → Dense → RepeatVector → LSTM → TimeDistributed
+   - Sauvegarde automatique du tokenizer dans models/
+
+Pipeline d'entraînement :
+- Chargement depuis models/ si modèles existent
+- Entraînement avec optimisation des hyperparamètres
+- Sauvegarde automatique de tous les objets nécessaires
+- Évaluation et visualisations pour le modèle ML
+
+Pipeline d'inférence :
+- Chargement automatique des modèles et objets associés
+- Prétraitement adapté selon le modèle
+- Prédiction avec gestion d'erreurs
+- Formatage des résultats
 """
 
 import numpy as np
@@ -25,53 +57,65 @@ class MLModel:
     """
     Modèle de Machine Learning optimisé pour la classification de texte.
     Utilise TF-IDF, Naive Bayes, et GridSearchCV pour l'optimisation.
+    - Sauvegarde automatique du vectorizer dans models/
     """
     MODEL_PATH = "models/ml_model.joblib"
+    VECTORIZER_PATH = "models/vectorizer.joblib"
     def __init__(self):
         """
         Initialise le modèle. Les composants seront définis lors de l'entraînement.
+        Charge le vectorizer si disponible.
         """
+        import joblib
         self.model = None
         self.X_train, self.X_test, self.y_train, self.y_test = [None] * 4
         self.report = None
         self.confusion_matrix_path = None
         self.learning_curve_path = None
+        self.vectorizer = None
         # Créer le dossier pour les plots s'il n'existe pas
         os.makedirs("app/plots", exist_ok=True)
-        # Chargement automatique si le modèle existe
+        # Chargement automatique du modèle
         if os.path.exists(self.MODEL_PATH):
             self.model = joblib.load(self.MODEL_PATH)
+        # Chargement automatique du vectorizer
+        if os.path.exists(self.VECTORIZER_PATH):
+            self.vectorizer = joblib.load(self.VECTORIZER_PATH)
 
     def train(self, texts, labels):
         """
         Sépare les données, optimise les hyperparamètres et entraîne le meilleur modèle.
+        Sauvegarde le vectorizer dans models/.
         """
+        from sklearn.model_selection import train_test_split, GridSearchCV
+        from sklearn.pipeline import Pipeline
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        import joblib
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             texts, labels, test_size=0.2, random_state=42, stratify=labels
         )
-        
         pipeline = Pipeline([
             ('tfidf', TfidfVectorizer()),
             ('model', MultinomialNB())
         ])
-        
-        # Grille d'hyperparamètres à tester
         param_grid = {
             'tfidf__ngram_range': [(1, 1), (1, 2)],
             'tfidf__max_df': [0.95, 1.0],
             'tfidf__min_df': [1, 2],
             'model__alpha': [0.5, 1.0]
         }
-        
         print("🔍 Optimisation des hyperparamètres avec GridSearchCV...")
         grid_search = GridSearchCV(pipeline, param_grid, cv=3, n_jobs=-1, verbose=1)
         grid_search.fit(self.X_train, self.y_train)
-        
         self.model = grid_search.best_estimator_
         print(f"Meilleurs hyperparamètres trouvés : {grid_search.best_params_}")
         # Sauvegarde du modèle entraîné
         joblib.dump(self.model, self.MODEL_PATH)
         print(f"Modèle ML sauvegardé dans {self.MODEL_PATH}")
+        # Sauvegarde du vectorizer
+        self.vectorizer = self.model.named_steps['tfidf']
+        joblib.dump(self.vectorizer, self.VECTORIZER_PATH)
+        print(f"Vectorizer ML sauvegardé dans {self.VECTORIZER_PATH}")
 
     def evaluate(self):
         """

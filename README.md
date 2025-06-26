@@ -1,129 +1,199 @@
-# Chatbot Avancé
+# 🐸 Kaeru Chatbot - Assistant NLP Intelligent
 
-Ce projet est un chatbot intelligent développé dans le cadre du cours de Natural Language Processing enseigné par Miotto à l'école Ynov. Le chatbot utilise des techniques avancées de traitement du langage naturel pour comprendre et répondre aux questions des utilisateurs.
+Un chatbot avancé de traitement du langage naturel (NLP) développé avec une personnalité de grenouille japonaise qui ponctue ses phrases par "kero". Le projet propose 5 fonctionnalités principales basées sur des modèles de Machine Learning et Deep Learning.
 
-## Fonctionnalités
+## 🚀 Fonctionnalités Principales
 
-### Classification de Texte
-- Classification avec Machine Learning (Naive Bayes)
-- Classification avec Deep Learning (BERT)
-- Classification avec RNN (PyTorch)
-- Classification avec Keras (TensorFlow)
+### 1. Classification de Texte
+- **Classification ML** : Pipeline TF-IDF + Naive Bayes optimisé par GridSearchCV
+- **Classification DL** : Réseau LSTM bidirectionnel avec BatchNormalization
 
-### Traitement de Texte
-- Nettoyage de texte
-- Gestion des expressions régulières
-- Encodage (One-Hot, TF-IDF, Word2Vec, BERT)
-- Transformation (Lemmatisation, Stemming, Stop Words)
+### 2. Résumé de Texte
+- **Résumé ML** : Méthode extractive basée sur la similarité cosinus TF-IDF
+- **Résumé DL** : Autoencodeur extractif (sélection des phrases les mieux reconstruites)
 
-### Autres Fonctionnalités
-- Recherche sur Wikipedia avec support LaTeX
-- Résumé automatique de texte (BART ou TF-IDF)
-- Interface utilisateur intuitive avec Streamlit
-- Prétraitement du texte avancé
-- API REST avec FastAPI
-- Documentation interactive avec Swagger UI
+### 3. Recherche Wikipedia Intelligente
+- Extraction automatique des mots-clés importants
+- Recherche intelligente avec gestion de l'ambiguïté
+- Interface interactive pour la sélection des pages
 
-## Installation
+## 🏗️ Architecture et Pipeline
 
-1. Cloner le repository :
+### Pipeline de Données
+1. **Prétraitement** : Nettoyage, normalisation, suppression des stopwords, lemmatisation
+2. **Vectorisation** : TF-IDF (ML) ou Tokenization + Padding (DL)
+3. **Entraînement** : Optimisation des hyperparamètres et sauvegarde automatique
+4. **Inférence** : Chargement des modèles et prédiction avec formatage personnalisé
+
+### Structure du Projet
+```
+NLP/
+├── app/
+│   ├── interface.py           # Interface Streamlit (5 fonctions)
+│   ├── chatbot.py            # Orchestrateur principal
+│   ├── models.py             # Modèles ML, DL, Autoencodeur
+│   ├── utils.py              # Prétraitement et utilitaires
+│   ├── train_models.py       # Script d'entraînement global
+│   ├── predict.py            # Script de prédiction standalone
+│   ├── data/                 # Datasets d'entraînement
+│   ├── plots/                # Visualisations (matrices, courbes)
+│   └── static/               # CSS et ressources
+├── models/                   # Modèles sauvegardés
+│   ├── ml_model.joblib      # Modèle ML + vectorizer
+│   ├── dl_model.h5          # Modèle DL + tokenizer + encoder
+│   ├── autoencoder_summarizer.h5  # Autoencodeur résumé
+│   └── autoencoder_tokenizer.pkl  # Tokenizer autoencodeur
+├── requirements.txt          # Dépendances
+└── README.md                # Documentation
+```
+
+## 🛠️ Installation et Configuration
+
+### Prérequis
+- Python 3.8+
+- TensorFlow 2.x
+- Scikit-learn
+- Streamlit
+- NLTK
+
+### Installation
 ```bash
+# Cloner le repository
 git clone [URL_DU_REPO]
-cd NPL-1
-```
+cd NLP
 
-2. Créer un environnement virtuel :
-```bash
+# Créer l'environnement virtuel
 python -m venv venv
-venv\Scripts\activate
-```
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
 
-3. Installer les dépendances :
-```bash
+# Installer les dépendances
 pip install -r requirements.txt
+
+# Télécharger les ressources NLTK
+python -c "import nltk; nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('punkt')"
 ```
-   python app/train.py
 
+## 🎯 Utilisation
 
-## Utilisation
-
-### Interface Streamlit
-1. Lancer l'interface :
+### Entraînement des Modèles
 ```bash
+# Entraîner tous les modèles sur le dataset
+python app/train_models.py
+```
+
+### Interface Utilisateur
+```bash
+# Lancer l'interface Streamlit
 streamlit run app/interface.py
 ```
 
-### API FastAPI
-1. Lancer l'API :
+### Prédictions Standalone
 ```bash
-cd app
-python main.py
+# Utiliser le script de prédiction
+python app/predict.py
 ```
 
-2. Accéder aux interfaces :
-- Interface Streamlit : http://localhost:8501
-- Documentation API : http://localhost:8000/docs
-- Interface API : http://localhost:8000
+## 🔧 Détail des Fonctionnalités
 
-## Structure du Projet
+### Classification ML (TF-IDF + Naive Bayes)
+- **Prétraitement** : Nettoyage complet (ponctuation, URLs, emails, stopwords, lemmatisation)
+- **Vectorisation** : TF-IDF avec bigrammes et optimisation des hyperparamètres
+- **Modèle** : Naive Bayes optimisé par GridSearchCV
+- **Évaluation** : Matrice de confusion, courbe d'apprentissage, rapport de classification
 
-```
-NPL-1/
-├── app/
-│   ├── main.py          # Point d'entrée de l'API FastAPI
-│   ├── interface.py     # Interface utilisateur Streamlit
-│   ├── chatbot.py       # Logique du chatbot
-│   ├── utils.py         # Fonctions utilitaires
-│   ├── models.py        # Modèles de classification
-│   └── models/          # Dossier pour les modèles sauvegardés
-├── logs/                # Logs de l'application
-├── requirements.txt     # Dépendances du projet
-└── README.md           # Documentation
-```
+### Classification DL (LSTM Bidirectionnel)
+- **Prétraitement** : Même pipeline que ML + tokenization Keras
+- **Architecture** : Embedding → LSTM Bidirectionnel → BatchNormalization → Dense
+- **Entraînement** : Early stopping, validation split, sauvegarde automatique
+- **Inférence** : Chargement du modèle, tokenizer et encoder
 
-## Fonctionnalités Détaillées
+### Résumé ML (Similarité Cosinus)
+- **Processus** : Découpage en phrases → Vectorisation TF-IDF → Calcul similarité cosinus
+- **Sélection** : 3 phrases les plus similaires au texte global
+- **Préservation** : Ordre original des phrases pour la cohérence narrative
 
-### 1. Classification de Texte
-- **Machine Learning** : Naive Bayes pour la classification rapide
-- **Deep Learning** :
-  - BERT pour la classification avancée
-  - RNN pour la classification séquentielle
-  - Keras pour la classification personnalisable
+### Résumé DL (Autoencodeur Extractif)
+- **Processus** : Découpage en phrases → Vectorisation → Autoencodeur → Erreur reconstruction
+- **Sélection** : Phrases avec l'erreur de reconstruction la plus faible
+- **Architecture** : Embedding → LSTM → Dense → RepeatVector → LSTM → TimeDistributed
 
-### 2. Traitement de Texte
-- **Nettoyage** : Suppression des caractères spéciaux, URLs, etc.
-- **Regex** : Recherche et remplacement de patterns
-- **Encodage** : Conversion du texte en vecteurs
-- **Transformation** : Normalisation du texte
+### Recherche Wikipedia Intelligente
+- **Extraction** : Mots-clés TF-IDF du texte utilisateur
+- **Recherche** : Pages Wikipedia correspondantes
+- **Gestion** : Ambiguïté avec boutons interactifs
+- **Résultat** : Résumé Wikipedia formaté
 
-### 3. Recherche Wikipedia
-- Recherche intelligente dans Wikipedia
-- Extraction et présentation des informations pertinentes
-- Support des formules mathématiques en LaTeX
+## 📊 Modèles et Sauvegarde
 
-### 4. Résumé de Texte
-- **Deep Learning** : BART pour des résumés de haute qualité
-- **Machine Learning** : TF-IDF pour des résumés rapides
+### Fichiers Sauvegardés (dossier `models/`)
+- `ml_model.joblib` : Pipeline ML complet (TF-IDF + Naive Bayes)
+- `vectorizer.joblib` : Vectorizer TF-IDF du modèle ML
+- `dl_model.h5` : Modèle LSTM bidirectionnel
+- `tokenizer.pkl` : Tokenizer du modèle DL
+- `encoder.pkl` : LabelEncoder du modèle DL
+- `autoencoder_summarizer.h5` : Autoencodeur pour le résumé
+- `autoencoder_tokenizer.pkl` : Tokenizer de l'autoencodeur
 
-### 5. API REST
-- Documentation interactive avec Swagger UI
-- Endpoints RESTful
-- Validation des données
-- Gestion des erreurs
+### Visualisations (dossier `app/plots/`)
+- `ml_confusion_matrix.png` : Matrice de confusion du modèle ML
+- `ml_learning_curve.png` : Courbe d'apprentissage du modèle ML
 
-## Contribution
+## 🎨 Interface Utilisateur
 
-Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou à soumettre une pull request.
+### Personnalité du Chatbot
+- **Personnage** : Grenouille japonaise (Kaeru)
+- **Style** : Messages ponctués par "kero" avec actions descriptives
+- **Confiance** : Réponses adaptées selon le niveau de confiance du modèle
 
-## Licence
+### Fonctions Disponibles
+1. **Classification (Machine Learning)** : Prédiction rapide avec TF-IDF
+2. **Classification (Deep Learning)** : Prédiction avancée avec LSTM
+3. **Summarization (Machine Learning)** : Résumé extractif TF-IDF
+4. **Summarization (Deep Learning)** : Résumé extractif autoencodeur
+5. **Wikipedia Search** : Recherche intelligente avec gestion d'ambiguïté
+
+## 🔄 Pipeline de Données Complet
+
+### Entraînement
+1. Chargement du dataset CSV
+2. Nettoyage (doublons, valeurs manquantes)
+3. Prétraitement global (TextPreprocessor)
+4. Entraînement ML (GridSearchCV + évaluation)
+5. Entraînement DL (LSTM + sauvegarde tokenizer/encoder)
+6. Entraînement autoencodeur (phrases du dataset)
+7. Sauvegarde de tous les modèles dans `models/`
+
+### Inférence
+1. Réception du texte utilisateur
+2. Prétraitement adapté selon la fonction
+3. Transformation numérique (vectorisation/tokenization)
+4. Prédiction avec le modèle approprié
+5. Formatage de la réponse avec personnalité
+
+## 🐛 Dépannage
+
+### Problèmes Courants
+- **Modèles non entraînés** : Exécuter `python app/train_models.py`
+- **Erreurs NLTK** : Vérifier le téléchargement des ressources
+- **Fichiers manquants** : Vérifier la présence des modèles dans `models/`
+
+### Logs et Debug
+- Les scripts affichent des messages détaillés avec emojis
+- Les erreurs sont capturées et affichées de manière conviviale
+- Les modèles sont automatiquement rechargés s'ils existent
+
+## 📝 Contribution
+
+Ce projet est développé dans le cadre du cours de Natural Language Processing.
+- **Enseignant** : Nicolas Miotto
+- **École** : Ynov
+- **Technologies** : Python, TensorFlow, Scikit-learn, Streamlit, NLTK
+
+## 📄 Licence
 
 Ce projet est sous licence MIT.
 
-## Auteurs
+---
 
-- Développé dans le cadre du cours de Natural Language Processing
-- Enseignant : Nicolas Miotto
-- École : Ynov
-
-🚀 Démarrage du serveur Chatbot API...
-📝 Documentation disponible sur : http://localhost:8000/docs
+**" *hops excitedly* 🐸 Ready to help you with NLP tasks, kero!"**
