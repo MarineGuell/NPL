@@ -1,191 +1,285 @@
 """
-Module Orchestrateur du Chatbot Kaeru - Pipeline Central de NLP
-
-Ce module orchestre le pipeline complet du chatbot :
-- Interface utilisateur (Streamlit) ↔ Orchestrateur ↔ Modèles
-- Prétraitement centralisé (TextPreprocessor)
-- Classification (ML : TF-IDF+Naive Bayes, DL : LSTM bidirectionnel)
-- Résumé (ML : similarité cosinus, DL : autoencodeur extractif)
-- Recherche Wikipedia intelligente
-
-Pipeline de données :
-1. Réception texte utilisateur → Prétraitement (nettoyage, normalisation)
-2. Transformation numérique (vectorisation TF-IDF ou tokenization)
-3. Prédiction avec modèle approprié (ML/DL selon fonction)
-4. Formatage réponse avec personnalité grenouille japonaise
-
-Fonctions disponibles via l'interface :
-- Classification ML : Pipeline optimisé GridSearchCV
-- Classification DL : LSTM bidirectionnel avec BatchNormalization  
-- Résumé ML : Similarité cosinus TF-IDF (3 phrases les plus représentatives)
-- Résumé DL : Autoencodeur extractif (phrases les mieux reconstruites)
-- Recherche Wikipedia : Extraction mots-clés + recherche intelligente
-
-Tous les modèles sont automatiquement chargés depuis models/ et sauvegardés lors de l'entraînement.
+Module principal du chatbot pour la classification et le résumé de texte.
 """
 
-from utils import TextPreprocessor
-from models import MLModel, DLModel, AutoencoderSummarizer
-from transformers import pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from nltk.tokenize import sent_tokenize
+import os
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from utils import DataLoader, TextPreprocessor, encode_labels, normalize_text
+from models import MLModel, DLModel
+from transformers import pipeline
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import re
 
-class ChatbotOrchestrator:
+class TextProcessor:
     """
-    Orchestre le pipeline complet :
-    - Interface utilisateur (Streamlit)
-    - Prétraitement (TextPreprocessor)
-    - Classification (ML et DL)
-    - Résumé (ML : TF-IDF/cosinus, DL : autoencodeur extractif)
-    
-    Détail du résumé DL (autoencodeur) :
-    1. Lors de l'entraînement global, l'autoencodeur est entraîné sur toutes les phrases du dataset.
-    2. Pour résumer un texte, on découpe en phrases, on vectorise, on passe chaque phrase dans l'autoencodeur.
-    3. On calcule l'erreur de reconstruction pour chaque phrase.
-    4. On sélectionne les phrases avec l'erreur la plus faible (les plus "centrales").
-    5. Le résumé est la concaténation de ces phrases dans l'ordre d'origine.
+    Classe principale pour le traitement de texte.
+    Gère l'initialisation, l'entraînement et l'utilisation des différents modèles.
     """
     
-    def __init__(self):
+    def __init__(self, data_path="data/bbc_dataset.csv"):
         """
-        Initialise l'orchestrateur avec tous les composants nécessaires.
-        """
-        print("🤖 Initialisation de l'orchestrateur...")
-        self.preprocessor = TextPreprocessor()
-        self.ml_classifier = MLModel()
-        self.dl_classifier = DLModel()
-        
-        # Le modèle de résumé DL (Autoencodeur) est chargé ici
-        print("🔄 Chargement du modèle de résumé (Autoencodeur)...")
-        self.autoencoder_summarizer = AutoencoderSummarizer()
-        self.is_trained = False
-        print("✅ Orchestrateur prêt.")
-
-    def train_models(self, texts, labels):
-        """
-        Entraîne tous les modèles :
-        - ML (TF-IDF + Naive Bayes)
-        - DL (LSTM bidirectionnel)
-        - Autoencodeur pour le résumé extractif
-        
-        Étapes détaillées :
-        1. Prétraitement des textes (nettoyage, normalisation)
-        2. Entraînement du modèle ML + évaluation
-        3. Préparation et entraînement du modèle DL
-        4. Entraînement de l'autoencodeur sur toutes les phrases du dataset
-        """
-        print("🔄 Prétraitement des textes pour l'entraînement...")
-        processed_texts = self.preprocessor.transform(texts)
-        
-        print("🔄 Entraînement du modèle ML...")
-        self.ml_classifier.train(processed_texts, labels)
-        self.ml_classifier.evaluate()
-        
-        print("🔄 Préparation et entraînement du modèle DL...")
-        X_dl, y_dl = self.dl_classifier.prepare(processed_texts, labels)
-        self.dl_classifier.train(X_dl, y_dl)
-        
-        # Entraînement de l'autoencodeur pour le résumé
-        print("🔄 Entraînement de l'autoencodeur pour le résumé...")
-        self.autoencoder_summarizer.train(texts.tolist())
-        
-        self.is_trained = True
-        print("✅ Modèles entraînés avec succès.")
-
-    def classify(self, text, model_type='ml'):
-        """
-        Classe un texte donné en utilisant le modèle spécifié.
+        Initialise le processeur de texte.
         
         Args:
-            text (str): Le texte brut à classifier.
-            model_type (str): 'ml' ou 'dl'.
+            data_path (str): Chemin vers le fichier de données
+        """
+        self.data_path = data_path
+        self.ml_classifier = MLModel()
+        self.dl_classifier = DLModel()
+        self.preprocessor = TextPreprocessor()
+        self.loader = DataLoader(data_path)
+        self.initialized = False
+        
+        # Initialisation du modèle de résumé
+        self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        
+        # Téléchargement des ressources NLTK nécessaires
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        self.stop_words = set(stopwords.words('english'))
+        
+    def extract_keywords_lda(self, text, n_topics=3, n_words=5):
+        """
+        Extrait les mots-clés d'un texte en utilisant LDA.
+        
+        Args:
+            text (str): Le texte à analyser
+            n_topics (int): Nombre de topics à extraire
+            n_words (int): Nombre de mots-clés par topic
             
         Returns:
-            str: La prédiction formatée.
+            list: Liste des mots-clés extraits
         """
-        if not self.is_trained:
-            return "The models aren't trained yet! 🐸 Please run the training script first, kero!"
+        # Prétraitement du texte
+        text = text.lower()
+        text = re.sub(r'[^\w\s]', '', text)
+        tokens = word_tokenize(text)
+        tokens = [t for t in tokens if t not in self.stop_words and len(t) > 2]
+        
+        # Création du vecteur de comptage
+        vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
+        X = vectorizer.fit_transform([text])
+        
+        # Application de LDA
+        lda = LatentDirichletAllocation(n_components=n_topics, random_state=42)
+        lda.fit(X)
+        
+        # Extraction des mots-clés
+        feature_names = vectorizer.get_feature_names_out()
+        keywords = []
+        
+        for topic_idx, topic in enumerate(lda.components_):
+            top_words_idx = topic.argsort()[:-n_words-1:-1]
+            top_words = [feature_names[i] for i in top_words_idx]
+            keywords.extend(top_words)
+            
+        return list(set(keywords))  # Suppression des doublons
+        
+    def summarize_with_keywords(self, text):
+        """
+        Crée un résumé basé sur les mots-clés extraits.
+        
+        Args:
+            text (str): Le texte à résumer
+            
+        Returns:
+            str: Le résumé avec les mots-clés
+        """
+        keywords = self.extract_keywords_lda(text)
+        summary = f"Ce texte parle de {', '.join(keywords[:-1])} et {keywords[-1]} kero 🐸"
+        return summary
 
-        print(f"🔄 Classification with {model_type.upper()} model...")
-        # Prétraitement complet du texte d'entrée
-        processed_text = self.preprocessor.normalize(self.preprocessor.clean(text))
-        
-        if model_type == 'ml':
-            prediction = self.ml_classifier.predict([processed_text])[0]
-            proba = self.ml_classifier.predict_proba([processed_text])[0].max()
-        else: # 'dl'
-            prediction = self.dl_classifier.predict([processed_text])[0]
-            proba = self.dl_classifier.predict_proba([processed_text])[0].max()
-        
-        # Réponses personnalisées selon la confiance
-        if proba > 0.8:
-            return f"*hops excitedly* 🐸 This text is definitely about **{prediction}**! I'm {proba:.1%} confident, kero!"
-        elif proba > 0.6:
-            return f"*tilts head thoughtfully* 🐸 I think this text is about **{prediction}**. I'm {proba:.1%} sure, kero!"
-        else:
-            return f"*croaks uncertainly* 🐸 Hmm... I'm not very confident, but I'd say it's about **{prediction}** ({proba:.1%} sure). Maybe I need more training, kero!"
+    def initialize(self):
+        """
+        Initialise les modèles en chargeant et prétraitant les données.
+        """
+        if self.initialized:
+            return
 
-    def summarize(self, text, model_type='dl'):
-        """
-        Résume un texte donné en utilisant la méthode spécifiée.
-        - 'ml' : résumé extractif TF-IDF/cosinus (phrases les plus similaires au texte global)
-        - 'dl' : résumé extractif autoencodeur (phrases les mieux reconstruites)
+        print("🔄 Chargement des données...")
+        texts, labels = self.loader.get_texts_and_labels()
         
-        Détail du résumé autoencodeur :
-        1. Découpage du texte en phrases
-        2. Vectorisation de chaque phrase
-        3. Passage dans l'autoencodeur
-        4. Calcul de l'erreur de reconstruction
-        5. Sélection des phrases avec l'erreur la plus faible
-        6. Assemblage du résumé
+        print("🔄 Prétraitement des textes...")
+        clean_texts = self.preprocessor.transform(texts)
+        
+        print("🔄 Division des données...")
+        X_train, X_test, y_train, y_test = self.loader.split_data(clean_texts, labels)
+        
+        print("🔄 Entraînement du modèle ML...")
+        self.ml_classifier.train(X_train, y_train)
+        
+        print("🔄 Préparation des données pour le modèle DL...")
+        X_dl, y_dl = self.dl_classifier.prepare(clean_texts, labels)
+        
+        print("🔄 Entraînement du modèle DL...")
+        history, X_test_dl, y_test_dl = self.dl_classifier.train(X_dl, y_dl)
+        
+        print("✅ Initialisation terminée !")
+        self.initialized = True
+
+    def process_text(self, text, task="classification", model_type="ml"):
         """
-        print(f"🔄 Summarization with {model_type.upper()} method...")
-        if model_type == 'ml':
-            # === MÉTHODE EXTRACTIVE BASÉE SUR LA SIMILARITÉ COSINUS ===
-            # 
-            # ÉTAPE 1: Tokenisation du texte en phrases
-            # Découpage du texte en phrases individuelles pour analyse
-            sentences = sent_tokenize(text)
-            if len(sentences) < 3:
-                return "*splashes water* 🐸 This text is too short to summarize, kero! It's already quite concise!"
+        Traite un texte selon la tâche et le type de modèle spécifiés.
+        
+        Args:
+            text (str): Le texte à traiter
+            task (str): Type de tâche ("classification", "summarization" ou "keywords")
+            model_type (str): Type de modèle ("ml" ou "dl")
             
-            # ÉTAPE 2: Vectorisation TF-IDF du texte entier
-            # - Création d'un vectorizer TF-IDF avec bigrammes (1-2 mots)
-            # - Suppression des mots vides anglais pour se concentrer sur le contenu
-            # - Le vectorizer "apprend" le vocabulaire du texte entier
-            vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2))
-            text_vector = vectorizer.fit_transform([text])
-            
-            # ÉTAPE 3: Vectorisation de chaque phrase
-            # - Utilisation du même vectorizer pour assurer la cohérence
-            # - Chaque phrase est transformée en vecteur avec le même vocabulaire
-            sentence_vectors = vectorizer.transform(sentences)
-            
-            # ÉTAPE 4: Calcul de la similarité cosinus
-            # - Mesure de l'angle entre chaque phrase et le texte entier
-            # - Valeur proche de 1 = très similaire, proche de 0 = très différent
-            # - Les phrases avec la plus haute similarité sont les plus représentatives
-            similarities = cosine_similarity(sentence_vectors, text_vector).flatten()
-            
-            # ÉTAPE 5: Sélection des phrases les plus représentatives
-            # - Tri des phrases par similarité décroissante
-            # - Sélection des 3 phrases les plus similaires au texte entier
-            # - Préservation de l'ordre original pour maintenir la cohérence narrative
-            num_sentences = min(3, len(sentences))
-            top_indices = similarities.argsort()[-num_sentences:][::-1]
-            top_indices.sort()  # Garder l'ordre original des phrases
-            
-            # ÉTAPE 6: Assemblage du résumé
-            # - Concaténation des phrases sélectionnées
-            # - Maintien de la fluidité narrative
-            summary = " ".join([sentences[i] for i in top_indices])
-            return f"*jumps from lily pad to lily pad* 🐸 Here's what I found most representative, kero:\n\n{summary}"
-        else: # 'dl'
-            # === MÉTHODE EXTRACTIVE BASÉE SUR L'AUTOENCODEUR ===
-            try:
-                summary = self.autoencoder_summarizer.summarize(text, num_sentences=3)
-                return f"*dives deep into the pond of knowledge* 🐸 Here's my autoencoder summary, kero:\n\n{summary}"
-            except Exception as e:
-                return f"*croaks apologetically* 🐸 Sorry, I couldn't summarize with the autoencoder: {str(e)}, kero!" 
+        Returns:
+            dict: Résultat du traitement
+        """
+        if not self.initialized:
+            self.initialize()
+        
+        # Prétraitement du texte
+        clean_text = self.preprocessor.clean(text)
+        normalized_text = normalize_text(clean_text)
+        
+        result = {
+            "original_text": text,
+            "cleaned_text": clean_text,
+            "normalized_text": normalized_text
+        }
+        
+        if task == "classification":
+            if model_type == "ml":
+                # Classification avec le modèle ML
+                prediction = self.ml_classifier.predict([normalized_text])[0]
+                probabilities = self.ml_classifier.predict_proba([normalized_text])[0]
+                result.update({
+                    "task": "classification",
+                    "model": "ml",
+                    "prediction": prediction,
+                    "confidence": float(max(probabilities)),
+                    "probabilities": probabilities.tolist()
+                })
+            else:
+                # Classification avec le modèle DL
+                prediction = self.dl_classifier.predict([normalized_text])[0]
+                probabilities = self.dl_classifier.predict_proba([normalized_text])[0]
+                result.update({
+                    "task": "classification",
+                    "model": "dl",
+                    "prediction": prediction,
+                    "confidence": float(max(probabilities)),
+                    "probabilities": probabilities.tolist()
+                })
+        
+        elif task == "summarization":
+            if model_type == "ml":
+                # Résumé avec TF-IDF (ML)
+                from sklearn.feature_extraction.text import TfidfVectorizer
+                from nltk.tokenize import sent_tokenize
+                
+                sentences = sent_tokenize(text)
+                vectorizer = TfidfVectorizer(stop_words='english')
+                tfidf_matrix = vectorizer.fit_transform(sentences)
+                sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
+                
+                # Sélection des 3 phrases les plus importantes
+                num_sentences = min(3, len(sentences))
+                top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
+                top_indices.sort()
+                
+                summary = " ".join([sentences[i] for i in top_indices])
+                result.update({
+                    "task": "summarization",
+                    "model": "ml",
+                    "summary": summary
+                })
+            else:
+                # Résumé avec BART (DL)
+                summary = self.summarizer(normalized_text, 
+                                        max_length=130, 
+                                        min_length=30, 
+                                        do_sample=False)[0]['summary_text']
+                result.update({
+                    "task": "summarization",
+                    "model": "dl",
+                    "summary": summary
+                })
+                
+        elif task == "keywords":
+            # Résumé basé sur les mots-clés avec LDA
+            summary = self.summarize_with_keywords(text)
+            result.update({
+                "task": "keywords",
+                "model": "lda",
+                "summary": summary
+            })
+        
+        return result
+
+    def evaluate_models(self):
+        """
+        Évalue les modèles sur les données de test.
+        """
+        if not self.initialized:
+            self.initialize()
+        
+        print("\nÉvaluation du modèle ML :")
+        self.ml_classifier.evaluate(X_test, y_test)
+        
+        print("\nÉvaluation du modèle DL :")
+        self.dl_classifier.evaluate(X_test_dl, y_test_dl)
+
+    def cleanup(self):
+        """
+        Nettoie les ressources utilisées par les modèles.
+        """
+        if hasattr(self.dl_classifier, 'model'):
+            del self.dl_classifier.model
+        if hasattr(self.dl_classifier, 'tokenizer'):
+            del self.dl_classifier.tokenizer
+        self.initialized = False
+
+if __name__ == "__main__":
+    # Test simple du processeur
+    processor = TextProcessor()
+    processor.initialize()
+    
+    # Exemples de textes à traiter
+    sample_texts = [
+        "Cricket Australia is set to begin the team's pre-season...",
+        "Additionally, the microsite on Amazon.in highlights...",
+        "Having undergone a surgery for shoulder dislocation..."
+    ]
+    
+    print("\nClassification avec le modèle ML :")
+    for text in sample_texts:
+        result = processor.process_text(text, task="classification", model_type="ml")
+        print(f"\nTexte : {text[:50]}...")
+        print(f"Prédiction : {result['prediction']}")
+        print(f"Confiance : {result['confidence']:.2f}")
+    
+    print("\nClassification avec le modèle DL :")
+    for text in sample_texts:
+        result = processor.process_text(text, task="classification", model_type="dl")
+        print(f"\nTexte : {text[:50]}...")
+        print(f"Prédiction : {result['prediction']}")
+        print(f"Confiance : {result['confidence']:.2f}")
+    
+    print("\nRésumé avec le modèle ML :")
+    for text in sample_texts:
+        result = processor.process_text(text, task="summarization", model_type="ml")
+        print(f"\nTexte : {text[:50]}...")
+        print(f"Résumé : {result['summary']}")
+    
+    print("\nRésumé avec le modèle DL :")
+    for text in sample_texts:
+        result = processor.process_text(text, task="summarization", model_type="dl")
+        print(f"\nTexte : {text[:50]}...")
+        print(f"Résumé : {result['summary']}")
+    
+    print("\nRésumé basé sur les mots-clés :")
+    for text in sample_texts:
+        result = processor.process_text(text, task="keywords", model_type="lda")
+        print(f"\nTexte : {text[:50]}...")
+        print(f"Résumé : {result['summary']}")
+    
+    processor.cleanup() 

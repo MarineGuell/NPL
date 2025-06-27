@@ -1,34 +1,5 @@
 """
-Module d'Utilitaires et Prétraitement - Pipeline de Données
-
-Ce module fournit les composants essentiels du pipeline de données du chatbot Kaeru :
-
-1. DataLoader : Chargement et préparation des datasets
-   - Lecture CSV avec nettoyage automatique (doublons, valeurs manquantes)
-   - Séparation textes/labels pour l'entraînement
-   - Split automatique train/test avec stratification
-
-2. TextPreprocessor : Prétraitement centralisé des textes
-   - Nettoyage complet : ponctuation, URLs, emails, caractères spéciaux
-   - Suppression des stopwords anglais et lemmatisation
-   - Normalisation (espaces multiples, début/fin)
-   - Pipeline appliqué à tous les textes (entraînement et inférence)
-
-3. extract_keywords : Extraction de mots-clés TF-IDF
-   - Utilisé pour la recherche Wikipedia intelligente
-   - Vectorisation TF-IDF avec bigrammes
-   - Sélection des termes les plus importants
-
-4. search_wikipedia_smart : Recherche Wikipedia intelligente
-   - Extraction automatique des mots-clés du texte utilisateur
-   - Recherche de pages Wikipedia correspondantes
-   - Gestion de l'ambiguïté avec suggestions interactives
-   - Retour de résumés formatés
-
-Pipeline de prétraitement standard :
-Texte brut → Nettoyage → Normalisation → Stopwords → Lemmatisation → Texte prêt
-
-Tous les composants sont optimisés pour la cohérence entre entraînement et inférence.
+Module d'utilitaires pour le prétraitement et le chargement des données.
 """
 
 import pandas as pd
@@ -41,7 +12,7 @@ from nltk.tokenize import word_tokenize
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
+import wikipedia
 
 class DataLoader:
     """
@@ -205,156 +176,57 @@ def encode_labels(labels):
     encoded_labels = encoder.fit_transform(labels)
     return encoded_labels, encoder
 
-def extract_keywords(text, max_keywords=5):
+def normalize_text(text):
     """
-    Extrait les mots-clés les plus importants d'un texte en utilisant TF-IDF.
+    Normalise un texte unique.
     
     Args:
-        text (str): Le texte à analyser
-        max_keywords (int): Nombre maximum de mots-clés à extraire
+        text (str): Le texte à normaliser
         
     Returns:
-        list: Liste des mots-clés triés par importance
+        str: Le texte normalisé
     """
-    # === EXTRACTION DE MOTS-CLÉS PAR TF-IDF ===
-    #
-    # ÉTAPE 1: Nettoyage et préparation du texte
-    # - Conversion en minuscules pour normalisation
-    # - Suppression de la ponctuation pour se concentrer sur les mots
-    # - Remplacement par des espaces pour éviter les mots collés
-    text = re.sub(r'[^\w\s]', ' ', text.lower())
+    # Suppression des espaces multiples
+    text = re.sub(r'\s+', ' ', text)
     
-    # ÉTAPE 2: Vectorisation TF-IDF avec bigrammes
-    # - Création d'un vectorizer TF-IDF spécialisé
-    # - stop_words='english': Suppression des mots vides (the, a, is, etc.)
-    # - ngram_range=(1, 2): Capture mots individuels ET expressions de 2 mots
-    # - max_features=100: Limite le vocabulaire aux 100 termes les plus fréquents
-    vectorizer = TfidfVectorizer(
-        stop_words='english',
-        ngram_range=(1, 2),  # Mots individuels et bigrammes
-        max_features=100
-    )
+    # Suppression des espaces en début et fin
+    text = text.strip()
     
-    # ÉTAPE 3: Calcul des scores TF-IDF
-    # - Transformation du texte en matrice TF-IDF
-    # - Extraction des noms de features (mots/expressions)
-    # - Récupération des scores d'importance pour chaque terme
-    tfidf_matrix = vectorizer.fit_transform([text])
-    feature_names = vectorizer.get_feature_names_out()
-    scores = tfidf_matrix.toarray()[0]
-    
-    # ÉTAPE 4: Tri et sélection des mots-clés
-    # - Association de chaque terme avec son score TF-IDF
-    # - Tri décroissant par score (les plus importants en premier)
-    # - Filtrage des termes avec score > 0 (élimination du bruit)
-    # - Sélection des max_keywords termes les plus importants
-    keyword_scores = list(zip(feature_names, scores))
-    keyword_scores.sort(key=lambda x: x[1], reverse=True)
-    
-    # Retour des mots-clés les plus importants
-    return [keyword for keyword, score in keyword_scores[:max_keywords] if score > 0]
+    return text
 
-def search_wikipedia_smart(text):
+def search_wikipedia_smart(query):
     """
-    Recherche Wikipedia intelligente basée sur l'extraction de mots-clés.
-    
-    Args:
-        text (str): Le texte de l'utilisateur
-        
-    Returns:
-        dict: Résultat avec statut, suggestions et données
+    Recherche intelligente sur Wikipedia avec gestion de l'ambiguïté.
+    Retourne un dictionnaire avec le statut et les suggestions/pages trouvées.
     """
-    import wikipedia
-    
+    wikipedia.set_lang("en")
     try:
-        # === RECHERCHE WIKIPEDIA INTELLIGENTE ===
-        #
-        # ÉTAPE 1: Extraction des mots-clés importants
-        # - Utilisation de la fonction extract_keywords pour identifier
-        #   les termes les plus significatifs dans le texte utilisateur
-        # - Ces mots-clés serviront de base pour la recherche Wikipedia
-        keywords = extract_keywords(text)
-        
-        # Vérification de la présence de mots-clés
-        if not keywords:
+        # Recherche de pages correspondant à la requête
+        results = wikipedia.search(query, results=5)
+        if not results:
             return {
                 'status': 'error',
-                'message': "I couldn't find any important keywords in your text, kero! 🐸"
+                'message': "Aucune page Wikipedia trouvée pour cette requête, kero ! 🐸"
             }
-        
-        # ÉTAPE 2: Recherche de pages Wikipedia pour chaque mot-clé
-        # - Pour chaque mot-clé extrait, recherche de pages Wikipedia correspondantes
-        # - Utilisation de wikipedia.search() pour trouver des pages similaires
-        # - Limitation à 3 résultats par mot-clé pour éviter la surcharge
-        suggestions = {}
-        for keyword in keywords:
-            try:
-                # Recherche de pages similaires sur Wikipedia
-                search_results = wikipedia.search(keyword, results=3)
-                if search_results:
-                    suggestions[keyword] = search_results
-            except Exception:
-                continue
-        
-        # Vérification de la présence de résultats
-        if not suggestions:
+        if len(results) == 1:
+            # Succès direct
+            page = results[0]
+            summary = wikipedia.summary(page, sentences=3)
             return {
-                'status': 'error',
-                'message': f"I couldn't find any Wikipedia pages for the keywords: {', '.join(keywords)}, kero! 🐸"
+                'status': 'success',
+                'page': page,
+                'summary': summary
             }
-        
-        # ÉTAPE 3: Gestion des cas de recherche
-        # - CAS A: Un seul mot-clé avec une seule page → Succès direct
-        # - CAS B: Plusieurs options disponibles → Ambiguïté nécessitant confirmation
-        if len(suggestions) == 1:
-            keyword = list(suggestions.keys())[0]
-            pages = suggestions[keyword]
-            if len(pages) == 1:
-                # CAS A: Une seule page trouvée, l'utiliser directement
-                try:
-                    # Récupération du résumé de la page Wikipedia
-                    summary = wikipedia.summary(pages[0], sentences=3)
-                    return {
-                        'status': 'success',
-                        'summary': summary,
-                        'page': pages[0]
-                    }
-                except Exception as e:
-                    return {
-                        'status': 'error',
-                        'message': f"Error accessing Wikipedia page: {str(e)}, kero! 🐸"
-                    }
-        
-        # CAS B: Plusieurs options disponibles, retourner les suggestions
-        # - L'interface utilisateur devra présenter ces options avec des boutons
-        # - L'utilisateur pourra choisir la page qui l'intéresse le plus
-        return {
-            'status': 'ambiguous',
-            'suggestions': suggestions,
-            'keywords': keywords
-        }
-        
+        else:
+            # Ambiguïté : plusieurs pages possibles
+            # On regroupe sous un seul mot-clé pour l'interface
+            suggestions = {query: results}
+            return {
+                'status': 'ambiguous',
+                'suggestions': suggestions
+            }
     except Exception as e:
         return {
             'status': 'error',
-            'message': f"An error occurred: {str(e)}, kero! 🐸"
+            'message': f"Erreur lors de la recherche Wikipedia : {str(e)} kero 🐸"
         }
-
-def search_wikipedia(query):
-    """
-    Recherches Wikipedia for a given query.
-    """
-    import wikipedia
-    try:
-        # Set language to English
-        wikipedia.set_lang("en")
-        # Get the page
-        page = wikipedia.page(query, auto_suggest=False)
-        # Return a summary (e.g., first 3 sentences)
-        return wikipedia.summary(query, sentences=3)
-    except wikipedia.exceptions.PageError:
-        return f"Sorry, I couldn't find a Wikipedia page for '{query}'."
-    except wikipedia.exceptions.DisambiguationError as e:
-        return f"'{query}' is ambiguous. Please be more specific. Options: {e.options[:5]}"
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
