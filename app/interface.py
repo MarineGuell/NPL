@@ -9,12 +9,13 @@ Personnalité : Grenouille japonaise qui ponctue ses phrases par "kero".
 2. Classification (Deep Learning) : LSTM bidirectionnel avec BatchNormalization  
 3. Summarization (Machine Learning) : Résumé extractif par similarité cosinus
 4. Summarization (Deep Learning) : Résumé extractif par autoencodeur
-5. Wikipedia Search : Recherche intelligente avec gestion d'ambiguïté
+5. Wikipedia Search : Recherche intelligente avec extraction de mots-clés et modèles ML/DL
 
 Fonctionnalités de l'Interface :
 - Conversation persistante avec historique des messages
 - Sélection de fonction via sidebar radio buttons
-- Gestion intelligente de l'ambiguïté Wikipedia (boutons interactifs)
+- Recherche Wikipedia intelligente avec extraction de mots-clés via modèles entraînés
+- Gestion des suggestions Wikipedia avec boutons interactifs
 - Messages personnalisés selon le niveau de confiance des modèles
 - Actions descriptives de la grenouille (*hops excitedly*, *tilts head*, etc.)
 - Chargement automatique des modèles via l'orchestrateur
@@ -32,7 +33,7 @@ et de transformation numérique avant d'être traités par les modèles.
 
 import streamlit as st
 from chatbot import ChatbotOrchestrator
-from utils import search_wikipedia_smart, DataLoader
+from wikipedia_search import WikipediaIntelligentSearch
 import os
 
 # Fonction utilitaire pour lister les datasets disponibles
@@ -59,12 +60,17 @@ def load_css():
 
 load_css()
 
-# Initialisation de l'orchestrateur en session
+# Initialisation de l'orchestrateur et du système de recherche Wikipedia en session
 @st.cache_resource
 def get_orchestrator():
     return ChatbotOrchestrator()
 
+@st.cache_resource
+def get_wikipedia_search():
+    return WikipediaIntelligentSearch()
+
 orchestrator = get_orchestrator()
+wiki_search = get_wikipedia_search()
 
 def main():
     st.title("🐸 Kaeru Chatbot")
@@ -75,17 +81,17 @@ def main():
         st.session_state.messages = []
     
     # Stockage des suggestions Wikipedia en cas d'ambiguïté
-    # - Cette variable permet de "mémoriser" les options proposées
-    # - Elle persiste entre les interactions jusqu'à ce que l'utilisateur fasse un choix
     if "wiki_suggestions" not in st.session_state:
         st.session_state.wiki_suggestions = None
+    
+    # Stockage des mots-clés extraits pour affichage
+    if "extracted_keywords" not in st.session_state:
+        st.session_state.extracted_keywords = None
 
     # === CONFIGURATION DE LA BARRE LATÉRALE ===
-    # Interface pour sélectionner la fonctionnalité souhaitée
     with st.sidebar:
         st.markdown("### ⚙️ Functions")
         st.markdown("---")
-        # Sélection de la fonction parmi les 5 options disponibles
         task = st.radio(
             "What would you like to do, kero? 🐸",
             [
@@ -98,73 +104,93 @@ def main():
         )
 
     # === AFFICHAGE DE L'HISTORIQUE DE CONVERSATION ===
-    # Restitution de tous les messages précédents pour maintenir le contexte
     for message in st.session_state.messages:
         with st.chat_message(message["role"], avatar=message.get("avatar")):
             st.markdown(message["content"])
     
-    # === GESTION DES SUGGESTIONS WIKIPEDIA EN CAS D'AMBIGUÏTÉ ===
-    # Cette section s'affiche uniquement quand il y a des suggestions en attente
+    # === AFFICHAGE DES MOTS-CLÉS EXTRACTÉS (Wikipedia Search) ===
+    if st.session_state.extracted_keywords and task == "Wikipedia Search":
+        st.markdown("### 🔍 Mots-clés extraits par Kaeru:")
+        keywords_display = []
+        for keyword, score in st.session_state.extracted_keywords:
+            keywords_display.append(f"**{keyword}** (confiance: {score:.2f})")
+        st.markdown(" • ".join(keywords_display))
+        st.markdown("---")
+    
+    # === GESTION DES SUGGESTIONS WIKIPEDIA ===
     if st.session_state.wiki_suggestions:
         st.markdown("### 🤔 Which Wikipedia page would you like to explore, kero? 🐸")
         
-        # === AFFICHAGE ORGANISÉ DES SUGGESTIONS ===
-        # - Groupement par mot-clé pour une organisation logique
-        # - Chaque mot-clé peut avoir plusieurs pages Wikipedia associées
-        for keyword, pages in st.session_state.wiki_suggestions.items():
-            st.markdown(f"**For '{keyword}':**")
+        # Affichage des suggestions avec scores de confiance
+        for i, suggestion in enumerate(st.session_state.wiki_suggestions):
+            confidence = suggestion['confidence']
+            title = suggestion['title']
+            keyword = suggestion['keyword']
             
-            # === CRÉATION DE BOUTONS INTERACTIFS ===
-            # - Un bouton pour chaque page Wikipedia trouvée
-            # - Clés uniques pour éviter les conflits d'interface
-            for i, page in enumerate(pages):
-                if st.button(f"📖 {page}", key=f"wiki_{keyword}_{i}"):
-                    # === TRAITEMENT DU CHOIX UTILISATEUR ===
-                    # Récupération du résumé de la page sélectionnée
-                    try:
-                        import wikipedia
-                        wikipedia.set_lang("en")
-                        summary = wikipedia.summary(page, sentences=3)
+            # Bouton avec score de confiance
+            if st.button(f"📖 {title} (via '{keyword}', confiance: {confidence})", 
+                        key=f"wiki_suggestion_{i}"):
+                # Récupération du résumé de la page sélectionnée
+                try:
+                    summary_result = wiki_search.get_page_summary(title, sentences=4)
+                    
+                    if summary_result['status'] == 'success':
+                        # Affichage du résumé avec autoencodeur si disponible
+                        if 'autoencoder_summary' in summary_result:
+                            response = f"""*hops to the knowledge pond* 🐸 Here's what I found about **{title}**, kero!
+
+**Résumé Wikipedia:**
+{summary_result['summary']}
+
+**Résumé Kaeru (IA):**
+{summary_result['autoencoder_summary']}"""
+                        else:
+                            response = f"*hops to the knowledge pond* 🐸 Here's what I found about **{title}**, kero!\n\n{summary_result['summary']}"
                         
-                        # === CRÉATION DE LA RÉPONSE PERSONNALISÉE ===
-                        # - Message de la grenouille avec action appropriée
-                        # - Affichage du résumé Wikipedia formaté
-                        response = f"*hops to the knowledge pond* 🐸 Here's what I found about **{page}**, kero:\n\n{summary}"
-                        
-                        # === MISE À JOUR DE L'HISTORIQUE ===
-                        # - Ajout de la réponse à l'historique de conversation
-                        # - Réinitialisation des suggestions (fin de l'ambiguïté)
-                        # - Rafraîchissement de l'interface
+                        # Mise à jour de l'historique
                         st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})
                         st.session_state.wiki_suggestions = None
+                        st.session_state.extracted_keywords = None
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error accessing Wikipedia: {str(e)}")
+                        
+                    elif summary_result['status'] == 'ambiguous':
+                        # Page ambiguë - proposer les options
+                        options = summary_result['options']
+                        st.markdown(f"**Multiple pages found for '{title}':**")
+                        for j, option in enumerate(options):
+                            if st.button(f"📄 {option}", key=f"ambiguous_{i}_{j}"):
+                                # Récupérer le résumé de l'option choisie
+                                option_summary = wiki_search.get_page_summary(option, sentences=4)
+                                if option_summary['status'] == 'success':
+                                    response = f"*hops to the knowledge pond* 🐸 Here's what I found about **{option}**, kero!\n\n{option_summary['summary']}"
+                                    st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})
+                                    st.session_state.wiki_suggestions = None
+                                    st.session_state.extracted_keywords = None
+                                    st.rerun()
+                    else:
+                        st.error(summary_result['message'])
+                        
+                except Exception as e:
+                    st.error(f"Error accessing Wikipedia: {str(e)}")
         
-        # === BOUTON D'ANNULATION ===
-        # - Permet à l'utilisateur d'annuler la recherche
-        # - Nettoie l'état et permet une nouvelle interaction
+        # Bouton d'annulation
         if st.button("❌ Cancel", key="cancel_wiki"):
             st.session_state.wiki_suggestions = None
+            st.session_state.extracted_keywords = None
             st.rerun()
             
     # === ZONE DE SAISIE ET TRAITEMENT DES REQUÊTES ===
-    # Cette section s'affiche quand il n'y a pas de suggestions en attente
     elif prompt := st.chat_input("Drop your text here, kero..."):
-        # === AJOUT DU MESSAGE UTILISATEUR À L'HISTORIQUE ===
-        # - Enregistrement du message pour maintenir la conversation
-        # - Affichage immédiat dans l'interface
+        # Ajout du message utilisateur à l'historique
         st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🌸"})
         with st.chat_message("user", avatar="🦟"):
             st.markdown(prompt)
         
-        # === TRAITEMENT DE LA DEMANDE SELON LA FONCTION SÉLECTIONNÉE ===
-        # Traiter la demande et afficher la réponse de l'assistant
+        # Traitement de la demande selon la fonction sélectionnée
         with st.chat_message("assistant", avatar="🐸"):
             with st.spinner("I'm thinking, kero..."):
                 response = ""
                 
-                # === ROUTAGE VERS LA FONCTIONNALITÉ APPROPRIÉE ===
                 if task == "Classification (Machine Learning)":
                     response = orchestrator.classify(prompt, model_type='ml')
                 elif task == "Classification (Deep Learning)":
@@ -175,29 +201,28 @@ def main():
                     response = orchestrator.summarize(prompt, model_type='dl')
                 elif task == "Wikipedia Search":
                     # === RECHERCHE WIKIPEDIA INTELLIGENTE ===
-                    # Utilisation de la fonction search_wikipedia_smart pour analyse intelligente
-                    result = search_wikipedia_smart(prompt)
+                    # Utilisation de la nouvelle fonction de recherche intelligente
+                    search_result = wiki_search.intelligent_search(prompt, max_suggestions=8)
                     
-                    # === GESTION DES DIFFÉRENTS CAS DE RÉPONSE ===
-                    if result['status'] == 'success':
-                        # CAS A: Succès direct - une seule page trouvée
-                        # - Affichage immédiat du résumé Wikipedia
-                        # - Message personnalisé de la grenouille
-                        response = f"*dives into the knowledge pond* 🐸 Here's what I found about **{result['page']}**, kero:\n\n{result['summary']}"
-                    elif result['status'] == 'ambiguous':
-                        # CAS B: Ambiguïté - plusieurs pages disponibles
-                        # - Stockage des suggestions pour affichage avec boutons
-                        # - Message demandant à l'utilisateur de choisir
-                        st.session_state.wiki_suggestions = result['suggestions']
-                        response = f"*tilts head thoughtfully* 🐸 I found several Wikipedia pages that might interest you! Please choose one below, kero!"
+                    if search_result['status'] == 'success':
+                        # Stockage des mots-clés extraits pour affichage
+                        st.session_state.extracted_keywords = search_result['keywords']
+                        
+                        # Stockage des suggestions pour affichage avec boutons
+                        st.session_state.wiki_suggestions = search_result['suggestions']
+                        
+                        # Message informatif
+                        response = f"""*tilts head thoughtfully* 🐸 {search_result['message']}
+
+I extracted these keywords from your text using my AI models:
+{', '.join([f"'{k[0]}' (score: {k[1]:.2f})" for k in search_result['keywords'][:5]])}
+
+Please choose a page below, kero!"""
+                        
                     else:  # error
-                        # CAS C: Erreur - aucun résultat trouvé
-                        # - Affichage du message d'erreur personnalisé
-                        response = result['message']
+                        response = search_result['message']
                 
-                # === AFFICHAGE ET ENREGISTREMENT DE LA RÉPONSE ===
-                # - Affichage de la réponse dans l'interface
-                # - Ajout à l'historique de conversation pour persistance
+                # Affichage et enregistrement de la réponse
                 if response:
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})

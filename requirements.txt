@@ -14,6 +14,9 @@ wikipedia
 fastapi
 uvicorn
 
-wikipedia
+seaborn
 arxiv
 tqdm
+feedparser
+requests
+beautifulsoup4

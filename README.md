@@ -34,15 +34,18 @@ NLP/
 │   ├── models.py             # Modèles ML, DL, Autoencodeur
 │   ├── utils.py              # Prétraitement et utilitaires
 │   ├── train_models.py       # Script d'entraînement global
+│   ├── train_models_modular.py # Script d'entraînement modulaire
+│   ├── evaluate_all_models.py # Évaluation complète avec comparaisons
+│   ├── evaluate_models.py    # Évaluation simple des modèles existants
 │   ├── predict.py            # Script de prédiction standalone
 │   ├── data/                 # Datasets d'entraînement
-│   ├── plots/                # Visualisations (matrices, courbes)
+│   ├── plots/                # Visualisations (matrices, courbes, comparaisons)
 │   └── static/               # CSS et ressources
 ├── models/                   # Modèles sauvegardés
 │   ├── ml_model.joblib      # Modèle ML + vectorizer
 │   ├── dl_model.h5          # Modèle DL + tokenizer + encoder
 │   ├── autoencoder_summarizer.h5  # Autoencodeur résumé
-│   └── autoencoder_tokenizer.pkl  # Tokenizer autoencodeur
+│   └── shared_tokenizer.pkl  # Tokenizer partagé DL
 ├── requirements.txt          # Dépendances
 └── README.md                # Documentation
 ```
@@ -77,9 +80,39 @@ python -c "import nltk; nltk.download('stopwords'); nltk.download('wordnet'); nl
 ## 🎯 Utilisation
 
 ### Entraînement des Modèles
+
+#### Entraînement Global (Recommandé)
 ```bash
 # Entraîner tous les modèles sur le dataset
 python app/train_models.py
+```
+
+#### Entraînement Modulaire
+```bash
+# Entraîner tous les modèles
+python app/train_models_modular.py --all
+
+# Entraîner un modèle spécifique
+python app/train_models_modular.py --model ml
+python app/train_models_modular.py --model dl
+python app/train_models_modular.py --model autoencoder
+
+# Entraîner et évaluer automatiquement
+python app/train_models_modular.py --all --evaluate
+```
+
+### Évaluation des Performances
+
+#### Évaluation Simple
+```bash
+# Évaluer les modèles déjà entraînés
+python app/evaluate_models.py
+```
+
+#### Évaluation Complète avec Comparaisons
+```bash
+# Évaluation complète avec visualisations comparatives
+python app/evaluate_all_models.py
 ```
 
 ### Interface Utilisateur
@@ -93,6 +126,41 @@ streamlit run app/interface.py
 # Utiliser le script de prédiction
 python app/predict.py
 ```
+
+## 📊 Évaluation et Visualisations
+
+### Métriques Évaluées
+- **Accuracy** : Précision globale de classification
+- **Precision** : Précision par classe
+- **Recall** : Rappel par classe
+- **F1-Score** : Score F1 par classe
+- **Matrice de confusion** : Visualisation des erreurs
+- **Courbes d'apprentissage** : Évolution de l'entraînement
+
+### Visualisations Générées (dossier `app/plots/`)
+
+#### Visualisations Individuelles
+- `ml_confusion_matrix.png` : Matrice de confusion du modèle ML
+- `ml_learning_curve.png` : Courbe d'apprentissage du modèle ML
+- `ml_metrics_by_class.png` : Métriques par classe (ML)
+- `dl_confusion_matrix.png` : Matrice de confusion du modèle DL
+- `dl_learning_curves.png` : Courbes d'apprentissage du modèle DL
+- `dl_metrics_by_class.png` : Métriques par classe (DL)
+- `autoencoder_learning_curves.png` : Courbes d'apprentissage de l'autoencodeur
+- `autoencoder_architecture.png` : Architecture de l'autoencodeur
+
+#### Visualisations Comparatives
+- `model_comparison_classification.png` : Comparaison des métriques de classification
+- `learning_curves_comparison.png` : Comparaison des courbes d'apprentissage
+- `performance_summary.png` : Résumé des performances globales
+- `evaluation_report.txt` : Rapport d'évaluation complet
+
+### Rapport d'Évaluation
+Le script `evaluate_all_models.py` génère un rapport complet incluant :
+- Métriques détaillées par modèle
+- Comparaisons entre modèles
+- Recommandations d'amélioration
+- Seuils de performance
 
 ## 🔧 Détail des Fonctionnalités
 
@@ -130,14 +198,14 @@ python app/predict.py
 - `ml_model.joblib` : Pipeline ML complet (TF-IDF + Naive Bayes)
 - `vectorizer.joblib` : Vectorizer TF-IDF du modèle ML
 - `dl_model.h5` : Modèle LSTM bidirectionnel
-- `tokenizer.pkl` : Tokenizer du modèle DL
-- `encoder.pkl` : LabelEncoder du modèle DL
+- `dl_label_encoder.pkl` : LabelEncoder du modèle DL
 - `autoencoder_summarizer.h5` : Autoencodeur pour le résumé
-- `autoencoder_tokenizer.pkl` : Tokenizer de l'autoencodeur
+- `shared_tokenizer.pkl` : Tokenizer partagé pour les modèles DL
 
-### Visualisations (dossier `app/plots/`)
-- `ml_confusion_matrix.png` : Matrice de confusion du modèle ML
-- `ml_learning_curve.png` : Courbe d'apprentissage du modèle ML
+### Tokenizer Partagé
+- **Avantage** : Cohérence du vocabulaire entre modèles DL
+- **Sauvegarde** : Automatique dans `models/shared_tokenizer.pkl`
+- **Chargement** : Automatique lors de l'initialisation des modèles
 
 ## 🎨 Interface Utilisateur
 

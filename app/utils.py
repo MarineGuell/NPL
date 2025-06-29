@@ -9,6 +9,7 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
@@ -67,7 +68,7 @@ class DataLoader:
 
 class TextPreprocessor:
     """
-    Classe pour le prétraitement des textes.
+    Classe pour le prétraitement des textes avec POS-tagging avancé.
     """
     def __init__(self):
         """
@@ -77,12 +78,35 @@ class TextPreprocessor:
         nltk.download('stopwords')
         nltk.download('wordnet')
         nltk.download('punkt')
+        nltk.download('averaged_perceptron_tagger')  # Pour le POS-tagging
         self.stop_words = set(stopwords.words('english'))
         self.lemmatizer = WordNetLemmatizer()
+        
+        # Mapping des tags POS NLTK vers WordNet
+        self.pos_mapping = {
+            'J': 'a',  # Adjective
+            'V': 'v',  # Verb
+            'N': 'n',  # Noun
+            'R': 'r'   # Adverb
+        }
+
+    def get_wordnet_pos(self, tag):
+        """
+        Convertit les tags POS de NLTK vers les tags WordNet.
+        
+        Args:
+            tag (str): Tag POS de NLTK
+            
+        Returns:
+            str: Tag POS pour WordNet
+        """
+        # Premier caractère du tag (plus général)
+        first_char = tag[0].upper()
+        return self.pos_mapping.get(first_char, 'n')  # Par défaut: nom
 
     def clean(self, text):
         """
-        Nettoie un texte de manière approfondie.
+        Nettoie un texte de manière approfondie avec POS-tagging.
         
         Args:
             text (str): Le texte à nettoyer
@@ -109,22 +133,77 @@ class TextPreprocessor:
         for punctuation in string.punctuation:
             text = text.replace(punctuation, '')
 
-        # Tokenization et suppression des mots vides
+        # 1. ✅ TOKENISATION
         tokenized_text = word_tokenize(text)
+        
+        # 2. ✅ SUPPRESSION DES STOPWORDS
         tokenized_text_cleaned = [
             w for w in tokenized_text if not w in self.stop_words
         ]
 
-        # Lemmatization
-        lemmatized = [
-            self.lemmatizer.lemmatize(word, pos="v")
-            for word in tokenized_text_cleaned
-        ]
+        # 3. ✅ POS-TAGGING
+        pos_tagged = pos_tag(tokenized_text_cleaned)
+
+        # 4. ✅ LEMMATISATION AVANCÉE AVEC POS-TAGGING
+        lemmatized = []
+        for word, tag in pos_tagged:
+            # Conversion du tag POS pour WordNet
+            wordnet_pos = self.get_wordnet_pos(tag)
+            # Lemmatisation avec le bon POS
+            lemmatized_word = self.lemmatizer.lemmatize(word, pos=wordnet_pos)
+            lemmatized.append(lemmatized_word)
 
         # Reconstruction du texte
         cleaned_text = ' '.join(word for word in lemmatized)
 
         return cleaned_text
+
+    def clean_with_pos_info(self, text):
+        """
+        Version avancée qui retourne aussi les informations POS.
+        
+        Args:
+            text (str): Le texte à nettoyer
+            
+        Returns:
+            tuple: (texte_nettoyé, liste_des_pos_tags)
+        """
+        # Basic cleaning
+        text = text.strip()
+        text = text.lower()
+        text = ''.join(char for char in text if not char.isdigit())
+
+        # Nettoyage des emails et URLs
+        text = re.sub(r'\S+@\S+', '', text)
+        text = re.sub(r'http\S+|www\S+|https\S+', '', text)
+        
+        # Suppression de la ponctuation
+        for punctuation in string.punctuation:
+            text = text.replace(punctuation, '')
+
+        # Tokenisation
+        tokenized_text = word_tokenize(text)
+        
+        # Suppression des stopwords
+        tokenized_text_cleaned = [
+            w for w in tokenized_text if not w in self.stop_words
+        ]
+
+        # POS-tagging
+        pos_tagged = pos_tag(tokenized_text_cleaned)
+
+        # Lemmatisation avec POS
+        lemmatized = []
+        pos_info = []
+        for word, tag in pos_tagged:
+            wordnet_pos = self.get_wordnet_pos(tag)
+            lemmatized_word = self.lemmatizer.lemmatize(word, pos=wordnet_pos)
+            lemmatized.append(lemmatized_word)
+            pos_info.append((lemmatized_word, tag, wordnet_pos))
+
+        cleaned_text = ' '.join(word for word in lemmatized)
+        
+        return cleaned_text, pos_info
 
     def normalize(self, text):
         """
@@ -154,13 +233,71 @@ class TextPreprocessor:
         Returns:
             Series: Les textes transformés
         """
-        # Nettoyage
+        # Nettoyage avec POS-tagging
         cleaned_texts = texts.apply(self.clean)
         
         # Normalisation
         normalized_texts = cleaned_texts.apply(self.normalize)
         
         return normalized_texts
+
+    def transform_with_pos_info(self, texts):
+        """
+        Transforme une liste de textes avec informations POS.
+        
+        Args:
+            texts: Les textes à transformer
+            
+        Returns:
+            tuple: (textes_transformés, informations_pos_par_texte)
+        """
+        cleaned_texts = []
+        pos_infos = []
+        
+        for text in texts:
+            cleaned_text, pos_info = self.clean_with_pos_info(text)
+            cleaned_texts.append(cleaned_text)
+            pos_infos.append(pos_info)
+        
+        # Normalisation
+        normalized_texts = [self.normalize(text) for text in cleaned_texts]
+        
+        return normalized_texts, pos_infos
+
+    def get_pos_statistics(self, texts, sample_size=1000):
+        """
+        Calcule les statistiques des parties du discours dans un échantillon de textes.
+        
+        Args:
+            texts: Les textes à analyser
+            sample_size (int): Taille de l'échantillon
+            
+        Returns:
+            dict: Statistiques des POS
+        """
+        if len(texts) > sample_size:
+            sample_texts = texts.sample(n=sample_size, random_state=42)
+        else:
+            sample_texts = texts
+        
+        pos_counts = {}
+        total_words = 0
+        
+        for text in sample_texts:
+            _, pos_info = self.clean_with_pos_info(text)
+            for word, tag, wordnet_pos in pos_info:
+                pos_counts[tag] = pos_counts.get(tag, 0) + 1
+                total_words += 1
+        
+        # Calcul des pourcentages
+        pos_stats = {}
+        for tag, count in pos_counts.items():
+            pos_stats[tag] = {
+                'count': count,
+                'percentage': (count / total_words) * 100
+            }
+        
+        return pos_stats
 
 def encode_labels(labels):
     """
