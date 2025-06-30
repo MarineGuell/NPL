@@ -19,7 +19,10 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils import TextPreprocessor
-from models import MLModel, DLModel, AutoencoderSummarizer
+from model_autoencodeur import AutoencoderSummarizer
+from model_lstm import DLModel
+from model_tfidf import MLModel
+from mon_tokenizer import Tokenizer
 
 class WikipediaIntelligentSearch:
     """
