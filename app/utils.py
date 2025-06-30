@@ -73,12 +73,11 @@ class TextPreprocessor:
     def __init__(self):
         """
         Initialise le prétraiteur de texte.
-        Télécharge les ressources NLTK nécessaires.
+        Télécharge automatiquement les ressources NLTK nécessaires.
         """
-        nltk.download('stopwords')
-        nltk.download('wordnet')
-        nltk.download('punkt')
-        nltk.download('averaged_perceptron_tagger')  # Pour le POS-tagging
+        # Téléchargement automatique des ressources NLTK avec gestion d'erreurs
+        self._download_nltk_resources()
+        
         self.stop_words = set(stopwords.words('english'))
         self.lemmatizer = WordNetLemmatizer()
         
@@ -89,6 +88,54 @@ class TextPreprocessor:
             'N': 'n',  # Noun
             'R': 'r'   # Adverb
         }
+
+    def _download_nltk_resources(self):
+        """
+        Télécharge automatiquement les ressources NLTK nécessaires.
+        """
+        resources = [
+            'stopwords',
+            'wordnet', 
+            'punkt',
+            'averaged_perceptron_tagger',
+            'averaged_perceptron_tagger_eng'  # Version anglaise spécifique
+        ]
+        
+        for resource in resources:
+            try:
+                # Vérifier si la ressource existe déjà
+                try:
+                    if resource == 'stopwords':
+                        stopwords.words('english')
+                    elif resource == 'wordnet':
+                        from nltk.corpus import wordnet
+                        wordnet.synsets('test')
+                    elif resource == 'punkt':
+                        from nltk.tokenize import word_tokenize
+                        word_tokenize('test')
+                    elif resource in ['averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
+                        from nltk.tag import pos_tag
+                        pos_tag(['test'])
+                except LookupError:
+                    # La ressource n'existe pas, la télécharger
+                    print(f"📥 Téléchargement automatique de {resource}...")
+                    nltk.download(resource, quiet=True)
+                    print(f"✅ {resource} téléchargé avec succès")
+                    
+            except Exception as e:
+                print(f"⚠️ Erreur lors du téléchargement de {resource}: {e}")
+                print("Tentative de téléchargement manuel...")
+                try:
+                    nltk.download(resource, quiet=True)
+                except:
+                    print(f"❌ Impossible de télécharger {resource}")
+                    # Si c'est le POS tagger qui pose problème, essayer l'autre version
+                    if resource == 'averaged_perceptron_tagger_eng':
+                        try:
+                            print("🔄 Tentative avec averaged_perceptron_tagger...")
+                            nltk.download('averaged_perceptron_tagger', quiet=True)
+                        except:
+                            print("❌ Impossible de télécharger le POS tagger")
 
     def get_wordnet_pos(self, tag):
         """
@@ -141,17 +188,35 @@ class TextPreprocessor:
             w for w in tokenized_text if not w in self.stop_words
         ]
 
-        # 3. ✅ POS-TAGGING
-        pos_tagged = pos_tag(tokenized_text_cleaned)
-
-        # 4. ✅ LEMMATISATION AVANCÉE AVEC POS-TAGGING
-        lemmatized = []
-        for word, tag in pos_tagged:
-            # Conversion du tag POS pour WordNet
-            wordnet_pos = self.get_wordnet_pos(tag)
-            # Lemmatisation avec le bon POS
-            lemmatized_word = self.lemmatizer.lemmatize(word, pos=wordnet_pos)
-            lemmatized.append(lemmatized_word)
+        # 3. ✅ POS-TAGGING AVEC GESTION D'ERREUR
+        try:
+            pos_tagged = pos_tag(tokenized_text_cleaned)
+            
+            # 4. ✅ LEMMATISATION AVANCÉE AVEC POS-TAGGING
+            lemmatized = []
+            for word, tag in pos_tagged:
+                # Conversion du tag POS pour WordNet
+                wordnet_pos = self.get_wordnet_pos(tag)
+                # Lemmatisation avec le bon POS
+                lemmatized_word = self.lemmatizer.lemmatize(word, pos=wordnet_pos)
+                lemmatized.append(lemmatized_word)
+                
+        except LookupError as e:
+            # Fallback si le POS tagger n'est pas disponible
+            print(f"⚠️ POS tagger non disponible: {e}")
+            print("🔄 Utilisation de la lemmatisation simple...")
+            
+            # Lemmatisation simple sans POS tagging
+            lemmatized = []
+            for word in tokenized_text_cleaned:
+                lemmatized_word = self.lemmatizer.lemmatize(word)
+                lemmatized.append(lemmatized_word)
+                
+        except Exception as e:
+            # Autre erreur, retourner le texte nettoyé sans lemmatisation
+            print(f"⚠️ Erreur lors du POS tagging: {e}")
+            print("🔄 Retour du texte nettoyé sans lemmatisation...")
+            lemmatized = tokenized_text_cleaned
 
         # Reconstruction du texte
         cleaned_text = ' '.join(word for word in lemmatized)
@@ -298,6 +363,149 @@ class TextPreprocessor:
             }
         
         return pos_stats
+
+    def extract_pos_words(self, text, pos_types=None):
+        """
+        Extrait les mots selon leur partie du discours (POS).
+        
+        Args:
+            text (str): Le texte à analyser
+            pos_types (list): Liste des types POS à extraire. Par défaut: ['NN', 'VB', 'JJ']
+                            - 'NN': Noms (nouns)
+                            - 'VB': Verbes (verbs) 
+                            - 'JJ': Adjectifs (adjectives)
+                            - 'RB': Adverbes (adverbs)
+                            - 'PRP': Pronoms (pronouns)
+                            - etc.
+        
+        Returns:
+            dict: Dictionnaire avec les mots groupés par type POS
+        """
+        if pos_types is None:
+            pos_types = ['NN', 'VB', 'JJ']  # Noms, Verbes, Adjectifs par défaut
+        
+        # Nettoyage et POS-tagging
+        _, pos_info = self.clean_with_pos_info(text)
+        
+        # Extraction des mots par type POS
+        pos_words = {pos_type: [] for pos_type in pos_types}
+        
+        for word, tag, wordnet_pos in pos_info:
+            # Vérifier si le tag commence par le type POS recherché
+            for pos_type in pos_types:
+                if tag.startswith(pos_type):
+                    pos_words[pos_type].append(word)
+                    break
+        
+        return pos_words
+
+    def extract_verbs_adjectives_nouns(self, text):
+        """
+        Extrait spécifiquement les verbes, adjectifs et noms d'un texte.
+        
+        Args:
+            text (str): Le texte à analyser
+            
+        Returns:
+            dict: Dictionnaire avec 'verbs', 'adjectives', 'nouns'
+        """
+        pos_words = self.extract_pos_words(text, ['NN', 'VB', 'JJ'])
+        
+        return {
+            'verbs': pos_words.get('VB', []),
+            'adjectives': pos_words.get('JJ', []),
+            'nouns': pos_words.get('NN', [])
+        }
+
+    def get_pos_summary(self, text):
+        """
+        Génère un résumé des parties du discours dans un texte.
+        
+        Args:
+            text (str): Le texte à analyser
+            
+        Returns:
+            dict: Résumé avec statistiques et mots par type
+        """
+        # Extraction des mots par POS
+        pos_words = self.extract_pos_words(text)
+        
+        # Statistiques
+        total_words = sum(len(words) for words in pos_words.values())
+        
+        summary = {
+            'total_words_analyzed': total_words,
+            'pos_distribution': {},
+            'words_by_pos': pos_words
+        }
+        
+        # Calcul de la distribution
+        for pos_type, words in pos_words.items():
+            if total_words > 0:
+                percentage = (len(words) / total_words) * 100
+            else:
+                percentage = 0
+                
+            summary['pos_distribution'][pos_type] = {
+                'count': len(words),
+                'percentage': percentage,
+                'words': words
+            }
+        
+        return summary
+
+    def clean_for_autoencoder(self, text):
+        """
+        Prétraitement minimal pour l'autoencodeur.
+        Préserve les phrases complètes et la ponctuation pour la tokenisation.
+        
+        Args:
+            text (str): Le texte à nettoyer
+            
+        Returns:
+            str: Le texte nettoyé pour l'autoencodeur
+        """
+        # Nettoyage de base très léger
+        text = text.strip()
+        
+        # Suppression des URLs et emails (peuvent perturber la tokenisation)
+        text = re.sub(r'http\S+|www\S+|https\S+', '', text)
+        text = re.sub(r'\S+@\S+', '', text)
+        
+        # Suppression des caractères de contrôle
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+        
+        # Suppression des chiffres sauf ceux à exactement 4 chiffres
+        # Utilise une regex pour préserver les nombres à 4 chiffres
+        text = re.sub(r'\b(?!\d{4}\b)\d+\b', '', text)
+        
+        # Normalisation des espaces (mais pas suppression)
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Suppression des lignes vides multiples
+        text = re.sub(r'\n\s*\n', '\n', text)
+        
+        return text.strip()
+
+    def transform_for_autoencoder(self, texts):
+        """
+        Transforme une liste de textes pour l'autoencodeur.
+        Utilise un prétraitement minimal pour préserver les phrases.
+        
+        Args:
+            texts: Les textes à transformer
+            
+        Returns:
+            list: Les textes transformés pour l'autoencodeur
+        """
+        cleaned_texts = []
+        
+        for text in texts:
+            cleaned_text = self.clean_for_autoencoder(text)
+            if cleaned_text:  # Ne garder que les textes non vides
+                cleaned_texts.append(cleaned_text)
+        
+        return cleaned_texts
 
 def encode_labels(labels):
     """

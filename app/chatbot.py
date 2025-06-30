@@ -30,6 +30,18 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.tokenize import sent_tokenize
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import nltk
+
+# Téléchargement automatique de punkt si nécessaire
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    print("📥 Téléchargement automatique de punkt pour le chatbot...")
+    try:
+        nltk.download('punkt', quiet=True)
+        print("✅ punkt téléchargé avec succès")
+    except Exception as e:
+        print(f"❌ Erreur lors du téléchargement de punkt: {e}")
 
 class ChatbotOrchestrator:
     """
@@ -59,8 +71,29 @@ class ChatbotOrchestrator:
         # Le modèle de résumé DL (Autoencodeur) est chargé ici
         print("🔄 Chargement du modèle de résumé (Autoencodeur)...")
         self.autoencoder_summarizer = AutoencoderSummarizer()
-        self.is_trained = False
+        
+        # Vérification automatique si les modèles sont entraînés
+        self.is_trained = self._check_models_trained()
         print("✅ Orchestrateur prêt.")
+
+    def _check_models_trained(self):
+        """
+        Vérifie si les modèles sont déjà entraînés et disponibles.
+        """
+        ml_trained = (self.ml_classifier.model is not None and 
+                     self.ml_classifier.vectorizer is not None)
+        dl_trained = self.dl_classifier.model is not None
+        autoencoder_trained = self.autoencoder_summarizer.model is not None
+        
+        if ml_trained and dl_trained and autoencoder_trained:
+            print("✅ Tous les modèles sont chargés et prêts à l'utilisation")
+            return True
+        elif ml_trained and dl_trained:
+            print("✅ Modèles de classification chargés (autoencodeur non disponible)")
+            return True
+        else:
+            print("⚠️ Modèles non entraînés - veuillez exécuter le script d'entraînement")
+            return False
 
     def train_models(self, texts, labels):
         """
@@ -118,13 +151,18 @@ class ChatbotOrchestrator:
             prediction = self.dl_classifier.predict([processed_text])[0]
             proba = self.dl_classifier.predict_proba([processed_text])[0].max()
         
+        print(f"🐸 Debug - Prédiction: {prediction}, Probabilité max: {proba:.3f}")
+        
         # Réponses personnalisées selon la confiance
         if proba > 0.8:
-            return f"*hops excitedly* 🐸 This text is definitely about **{prediction}**! I'm {proba:.1%} confident, kero!"
+            response = f"*hops excitedly* 🐸 This text is definitely about **{prediction}**! I'm {proba:.1%} confident, kero!"
         elif proba > 0.6:
-            return f"*tilts head thoughtfully* 🐸 I think this text is about **{prediction}**. I'm {proba:.1%} sure, kero!"
+            response = f"*tilts head thoughtfully* 🐸 I think this text is about **{prediction}**. I'm {proba:.1%} sure, kero!"
         else:
-            return f"*croaks uncertainly* 🐸 Hmm... I'm not very confident, but I'd say it's about **{prediction}** ({proba:.1%} sure). Maybe I need more training, kero!"
+            response = f"*croaks uncertainly* 🐸 Hmm... I'm not very confident, but I'd say it's about **{prediction}** ({proba:.1%} sure). Maybe I need more training, kero!"
+        
+        print(f"🐸 Debug - Réponse générée: {response}")
+        return response
 
     def summarize(self, text, model_type='dl'):
         """
@@ -148,7 +186,7 @@ class ChatbotOrchestrator:
             # Découpage du texte en phrases individuelles pour analyse
             sentences = sent_tokenize(text)
             if len(sentences) < 3:
-                return "*splashes water* 🐸 This text is too short to summarize, kero! It's already quite concise!"
+                return "This text is too short to summarize! It's already quite concise."
             
             # ÉTAPE 2: Vectorisation TF-IDF du texte entier
             # - Création d'un vectorizer TF-IDF avec bigrammes (1-2 mots)
@@ -180,11 +218,11 @@ class ChatbotOrchestrator:
             # - Concaténation des phrases sélectionnées
             # - Maintien de la fluidité narrative
             summary = " ".join([sentences[i] for i in top_indices])
-            return f"*jumps from lily pad to lily pad* 🐸 Here's what I found most representative, kero:\n\n{summary}"
+            return f"In short, your text says : {summary} Kero 🐸"
         else: # 'dl'
             # === MÉTHODE EXTRACTIVE BASÉE SUR L'AUTOENCODEUR ===
             try:
                 summary = self.autoencoder_summarizer.summarize(text, num_sentences=3)
-                return f"*dives deep into the pond of knowledge* 🐸 Here's my autoencoder summary, kero:\n\n{summary}"
+                return f"In short, your text says : {summary} Kero 🐸"
             except Exception as e:
                 return f"*croaks apologetically* 🐸 Sorry, I couldn't summarize with the autoencoder: {str(e)}, kero!" 

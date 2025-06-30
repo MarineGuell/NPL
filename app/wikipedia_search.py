@@ -293,13 +293,50 @@ class WikipediaIntelligentSearch:
             # Récupération du résumé
             summary = wikipedia.summary(page_title, sentences=sentences)
             
+            # Vérification que le contenu correspond au titre demandé
+            # Si le titre récupéré est différent du titre demandé, c'est suspect
+            try:
+                page = wikipedia.page(page_title)
+                actual_title = page.title
+                
+                # Si le titre réel est très différent, c'est probablement une redirection incorrecte
+                if actual_title.lower() != page_title.lower():
+                    print(f"⚠️  Attention: Titre demandé '{page_title}' -> Titre réel '{actual_title}'")
+                    
+                    # Vérifier si le contenu semble correct en cherchant des mots-clés
+                    summary_lower = summary.lower()
+                    page_title_lower = page_title.lower()
+                    
+                    # Si le titre demandé n'apparaît pas dans le contenu, c'est suspect
+                    if page_title_lower not in summary_lower:
+                        print(f"❌ Contenu ne correspond pas au titre demandé '{page_title}'")
+                        
+                        # Essayer de trouver une page plus appropriée
+                        alternative_search = wikipedia.search(page_title, results=5)
+                        for alt_result in alternative_search:
+                            if alt_result.lower() != actual_title.lower():
+                                try:
+                                    alt_page = wikipedia.page(alt_result)
+                                    alt_summary = wikipedia.summary(alt_result, sentences=sentences)
+                                    
+                                    # Vérifier si cette page semble plus appropriée
+                                    if page_title_lower in alt_summary.lower():
+                                        print(f"✅ Page alternative trouvée: '{alt_result}'")
+                                        summary = alt_summary
+                                        actual_title = alt_result
+                                        break
+                                except:
+                                    continue
+            except:
+                pass  # Si on ne peut pas vérifier, on continue avec le résumé original
+            
             # Tentative de résumé avec l'autoencodeur si disponible
             if self.autoencoder.model is not None:
                 try:
                     autoencoder_summary = self.autoencoder.summarize(summary, num_sentences=2)
                     return {
                         'status': 'success',
-                        'title': page_title,
+                        'title': actual_title if 'actual_title' in locals() else page_title,
                         'summary': summary,
                         'autoencoder_summary': autoencoder_summary
                     }
@@ -308,19 +345,73 @@ class WikipediaIntelligentSearch:
             
             return {
                 'status': 'success',
-                'title': page_title,
+                'title': actual_title if 'actual_title' in locals() else page_title,
                 'summary': summary
             }
             
         except wikipedia.exceptions.DisambiguationError as e:
-            # Page ambiguë
-            return {
-                'status': 'ambiguous',
-                'title': page_title,
-                'options': e.options[:5]  # Limiter à 5 options
-            }
+            # Page ambiguë - filtrer les options valides
+            valid_options = []
+            for option in e.options[:10]:  # Tester plus d'options
+                try:
+                    # Vérifier si l'option est accessible
+                    test_summary = wikipedia.summary(option, sentences=1)
+                    if test_summary and len(test_summary) > 10:  # Vérifier que le résumé n'est pas vide
+                        valid_options.append(option)
+                        if len(valid_options) >= 5:  # Limiter à 5 options valides
+                            break
+                except:
+                    continue  # Ignorer les options qui ne fonctionnent pas
+            
+            if valid_options:
+                return {
+                    'status': 'ambiguous',
+                    'title': page_title,
+                    'options': valid_options
+                }
+            else:
+                # Si aucune option valide, essayer la recherche directe
+                try:
+                    search_results = wikipedia.search(page_title, results=3)
+                    if search_results:
+                        best_match = search_results[0]
+                        summary = wikipedia.summary(best_match, sentences=sentences)
+                        return {
+                            'status': 'success',
+                            'title': best_match,
+                            'summary': f"Found similar page '{best_match}': {summary}",
+                            'note': f"Original search: {page_title}"
+                        }
+                except:
+                    pass
+                
+                return {
+                    'status': 'not_found',
+                    'title': page_title,
+                    'message': f"Page '{page_title}' non trouvée et aucune alternative valide, kero! 🐸"
+                }
             
         except wikipedia.exceptions.PageError:
+            # Page non trouvée - essayer des alternatives
+            try:
+                # Rechercher des pages similaires
+                search_results = wikipedia.search(page_title, results=3)
+                if search_results:
+                    # Essayer la première suggestion
+                    alternative_title = search_results[0]
+                    try:
+                        alt_summary = wikipedia.summary(alternative_title, sentences=sentences)
+                        return {
+                            'status': 'success',
+                            'title': alternative_title,
+                            'summary': f"Page '{page_title}' not found, but here's information about '{alternative_title}': {alt_summary}",
+                            'note': f"Original search: {page_title}"
+                        }
+                    except:
+                        pass
+            except:
+                pass
+            
             return {
                 'status': 'not_found',
                 'title': page_title,
@@ -382,8 +473,198 @@ class WikipediaIntelligentSearch:
             'user_input': user_input,
             'keywords': keywords,
             'suggestions': suggestions,
-            'message': f"J'ai trouvé {len(suggestions)} pages pertinentes, kero! 🐸"
+            'message': f"I'm not sure about the concept you are looking for. I recognized {len(suggestions)} of them, kero! 🐸"
         }
+    
+    def smart_search_by_combinations(self, user_input, max_suggestions=8):
+        """
+        Recherche Wikipedia intelligente par combinaisons de mots.
+        
+        Logique :
+        1. Si input ≤ 5 mots : cherche page avec ce nom exact
+        2. Si pas trouvé : teste combinaisons de 4 mots, puis 3, etc.
+        3. Si input > 5 mots : retire stopwords et retente
+        4. Si toujours > 5 mots : garde seulement noms et adjectifs
+        5. Si rien trouvé : utilise la méthode actuelle
+        
+        Args:
+            user_input (str): Entrée utilisateur
+            max_suggestions (int): Nombre maximum de suggestions
+            
+        Returns:
+            dict: Résultats de la recherche
+        """
+        print(f"🔍 Recherche par combinaisons pour: '{user_input}'")
+        
+        # Nettoyage de base
+        cleaned_input = user_input.strip()
+        words = cleaned_input.split()
+        print(f"📝 Mots détectés: {words} ({len(words)} mots)")
+        
+        # ÉTAPE 1: Si ≤ 5 mots, chercher page avec ce nom exact
+        if len(words) <= 5:
+            print("🐸 Étape 1: Recherche exacte (≤ 5 mots)")
+            exact_search = self._search_exact_page(cleaned_input)
+            if exact_search['status'] == 'success':
+                return exact_search
+        
+        # ÉTAPE 2: Si ≤ 5 mots, tester combinaisons décroissantes
+        if len(words) <= 5:
+            print("🐸 Étape 2: Test des combinaisons décroissantes")
+            for combo_size in range(len(words)-1, 0, -1):
+                print(f"   Test des combinaisons de {combo_size} mots")
+                combinations = self._generate_combinations(words, combo_size)
+                
+                for combo in combinations:
+                    combo_text = ' '.join(combo)
+                    print(f"   Test: '{combo_text}'")
+                    result = self._search_exact_page(combo_text)
+                    if result['status'] == 'success':
+                        return result
+        
+        # ÉTAPE 3: Si > 5 mots, retirer les stopwords
+        if len(words) > 5:
+            print("🐸 Étape 3: Retrait des stopwords")
+            words_without_stopwords = self._remove_stopwords(words)
+            print(f"   Mots après retrait stopwords: {words_without_stopwords}")
+            
+            if len(words_without_stopwords) <= 5:
+                # Retester avec les combinaisons
+                for combo_size in range(len(words_without_stopwords), 0, -1):
+                    combinations = self._generate_combinations(words_without_stopwords, combo_size)
+                    for combo in combinations:
+                        combo_text = ' '.join(combo)
+                        result = self._search_exact_page(combo_text)
+                        if result['status'] == 'success':
+                            return result
+        
+        # ÉTAPE 4: Si toujours > 5 mots, garder seulement noms et adjectifs
+        if len(words) > 5:
+            print("🐸 Étape 4: Extraction noms et adjectifs")
+            pos_words = self.preprocessor.extract_verbs_adjectives_nouns(cleaned_input)
+            nouns_and_adjectives = pos_words['nouns'] + pos_words['adjectives']
+            print(f"   Noms et adjectifs: {nouns_and_adjectives}")
+            
+            if len(nouns_and_adjectives) <= 5:
+                # Retester avec les combinaisons
+                for combo_size in range(len(nouns_and_adjectives), 0, -1):
+                    combinations = self._generate_combinations(nouns_and_adjectives, combo_size)
+                    for combo in combinations:
+                        combo_text = ' '.join(combo)
+                        result = self._search_exact_page(combo_text)
+                        if result['status'] == 'success':
+                            return result
+        
+        # ÉTAPE 5: Si rien trouvé, utiliser la méthode actuelle
+        print("🐸 Étape 5: Utilisation de la méthode actuelle")
+        return self.intelligent_search(user_input, max_suggestions)
+
+    def _search_exact_page(self, search_term):
+        """
+        Recherche une page Wikipedia avec un terme exact.
+        
+        Args:
+            search_term (str): Terme de recherche
+            
+        Returns:
+            dict: Résultat de la recherche
+        """
+        try:
+            # Recherche directe
+            search_results = wikipedia.search(search_term, results=5)
+            
+            if not search_results:
+                return {'status': 'not_found'}
+            
+            # Vérifier si le premier résultat correspond exactement
+            best_match = search_results[0]
+            
+            # Correspondance exacte (insensible à la casse)
+            if search_term.lower() == best_match.lower():
+                print(f"   ✅ Correspondance exacte trouvée: '{best_match}'")                
+                return {
+                    'status': 'success',
+                    'user_input': search_term,
+                    'keywords': [(search_term, 1.0)],
+                    'suggestions': [{
+                        'id': 0,
+                        'title': best_match,
+                        'keyword': search_term,
+                        'confidence': '1.00'
+                    }],
+                    'message': f"Found exact match for '{search_term}', kero! 🐸"
+                }
+            
+            # Correspondance partielle (le terme est dans le titre)
+            if search_term.lower() in best_match.lower():
+                print(f"   ✅ Correspondance partielle trouvée: '{best_match}'")
+                return {
+                    'status': 'success',
+                    'user_input': search_term,
+                    'keywords': [(search_term, 0.8)],
+                    'suggestions': [{
+                        'id': 0,
+                        'title': best_match,
+                        'keyword': search_term,
+                        'confidence': '0.80'
+                    }],
+                    'message': f"Found partial match for '{search_term}', kero! 🐸"
+                }
+            
+            return {'status': 'not_found'}
+            
+        except Exception as e:
+            print(f"   ❌ Erreur lors de la recherche: {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _generate_combinations(self, words, size):
+        """
+        Génère toutes les combinaisons possibles de mots de taille donnée.
+        
+        Args:
+            words (list): Liste des mots
+            size (int): Taille des combinaisons
+            
+        Returns:
+            list: Liste des combinaisons
+        """
+        from itertools import combinations
+        
+        if size > len(words):
+            return []
+        
+        # Générer toutes les combinaisons
+        word_combinations = list(combinations(words, size))
+        
+        # Convertir en listes de chaînes
+        result = []
+        for combo in word_combinations:
+            result.append(list(combo))
+        
+        return result
+
+    def _remove_stopwords(self, words):
+        """
+        Retire les stopwords d'une liste de mots.
+        
+        Args:
+            words (list): Liste des mots
+            
+        Returns:
+            list: Liste sans stopwords
+        """
+        try:
+            # Utiliser les stopwords de NLTK
+            from nltk.corpus import stopwords
+            stop_words = set(stopwords.words('english'))
+            
+            # Filtrer les stopwords
+            filtered_words = [word for word in words if word.lower() not in stop_words]
+            
+            return filtered_words
+        except Exception as e:
+            print(f"Erreur lors du retrait des stopwords: {e}")
+            return words
     
     def get_page_content(self, page_title):
         """

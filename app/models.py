@@ -57,6 +57,15 @@ import seaborn as sns
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from datetime import datetime
+import string
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
+import wikipedia
 
 # ============================================================================
 # TOKENIZER PARTAGÉ POUR LES MODÈLES DL
@@ -66,7 +75,7 @@ class SharedTokenizer:
     """
     Tokenizer partagé entre les modèles DL pour assurer la cohérence du vocabulaire.
     """
-    TOKENIZER_PATH = "models/shared_tokenizer.pkl"
+    TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "shared_tokenizer.pkl")
     
     def __init__(self, max_words=5000, max_len=200):
         self.max_words = max_words
@@ -116,8 +125,8 @@ class MLModel:
     - Sauvegarde automatique du vectorizer dans models/
     - Génération automatique des performances dans app/performances/
     """
-    MODEL_PATH = "models/ml_model.joblib"
-    VECTORIZER_PATH = "models/vectorizer.joblib"
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "ml_model.joblib")
+    VECTORIZER_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "vectorizer.joblib")
     
     def __init__(self):
         """
@@ -130,11 +139,21 @@ class MLModel:
         self.y_pred = None
         self.best_params = None
         self.cv_results = None
+        
+        print(f"🔍 Recherche du modèle ML dans: {self.MODEL_PATH}")
+        print(f"🔍 Recherche du vectorizer dans: {self.VECTORIZER_PATH}")
+        
         # Chargement automatique si le modèle existe
         if os.path.exists(self.MODEL_PATH):
+            print("✅ Modèle ML trouvé, chargement...")
             self.model = joblib.load(self.MODEL_PATH)
             if os.path.exists(self.VECTORIZER_PATH):
+                print("✅ Vectorizer trouvé, chargement...")
                 self.vectorizer = joblib.load(self.VECTORIZER_PATH)
+            else:
+                print("❌ Vectorizer non trouvé")
+        else:
+            print("❌ Modèle ML non trouvé")
 
     def train(self, texts, labels):
         """
@@ -322,6 +341,17 @@ class MLModel:
             raise RuntimeError("The ML model isn't trained yet! 🐸 Please run the training script first, kero!")
         return self.model.predict_proba(texts)
 
+    def evaluate(self):
+        """
+        Évalue le modèle et génère les métriques de performance.
+        """
+        if self.y_test is None or self.y_pred is None:
+            print("⚠️ Pas de données de test pour évaluer le modèle")
+            return
+        
+        print("📊 Évaluation du modèle ML...")
+        self._generate_performance_metrics()
+
 # ============================================================================
 # MODÈLE DL
 # ============================================================================
@@ -333,33 +363,38 @@ class DLModel:
     - Génération automatique des performances dans app/performances/
     - Early stopping avancé avec ReduceLROnPlateau
     """
-    MODEL_PATH = "models/dl_model.h5"
-    ENCODER_PATH = "models/dl_label_encoder.pkl"
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "dl_model.h5")
+    ENCODER_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "dl_label_encoder.pkl")
     
     def __init__(self, max_words=5000, max_len=200):
         """
         Initialise le modèle DL.
-        
-        Args:
-            max_words (int): Nombre maximum de mots dans le vocabulaire
-            max_len (int): Longueur maximale des séquences
         """
         self.max_words = max_words
         self.max_len = max_len
         self.tokenizer = shared_tokenizer  # Utilise le tokenizer partagé
         self.model = None
-        self.encoder = LabelEncoder()
-        self.history = None
+        self.encoder = None
         self.X_test = None
         self.y_test = None
         self.y_pred = None
+        self.history = None
+        
+        print(f"🔍 Recherche du modèle DL dans: {self.MODEL_PATH}")
+        print(f"🔍 Recherche de l'encoder dans: {self.ENCODER_PATH}")
         
         # Chargement automatique si le modèle existe
         if os.path.exists(self.MODEL_PATH):
+            print("✅ Modèle DL trouvé, chargement...")
             self.model = load_model(self.MODEL_PATH)
-        if os.path.exists(self.ENCODER_PATH):
-            with open(self.ENCODER_PATH, 'rb') as f:
-                self.encoder = pickle.load(f)
+            if os.path.exists(self.ENCODER_PATH):
+                print("✅ Encoder trouvé, chargement...")
+                with open(self.ENCODER_PATH, 'rb') as f:
+                    self.encoder = pickle.load(f)
+            else:
+                print("❌ Encoder non trouvé")
+        else:
+            print("❌ Modèle DL non trouvé")
 
     def prepare(self, texts, labels):
         """
@@ -611,6 +646,17 @@ class DLModel:
         padded = pad_sequences(sequences, maxlen=self.max_len)
         return self.model.predict(padded)
 
+    def evaluate(self):
+        """
+        Évalue le modèle et génère les métriques de performance.
+        """
+        if self.y_test is None or self.y_pred is None:
+            print("⚠️ Pas de données de test pour évaluer le modèle")
+            return
+        
+        print("📊 Évaluation du modèle DL...")
+        self._generate_performance_metrics()
+
 # ============================================================================
 # AUTOENCODEUR
 # ============================================================================
@@ -632,7 +678,7 @@ class AutoencoderSummarizer:
        - On calcule l'erreur de reconstruction (différence entre la phrase originale et la phrase reconstruite).
        - On sélectionne les phrases avec l'erreur la plus faible (les plus "représentatives").
     """
-    MODEL_PATH = "models/autoencoder_summarizer.h5"
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "autoencoder_summarizer.h5")
     
     def __init__(self, max_words=5000, embedding_dim=128, max_sentence_length=50):
         """
@@ -667,10 +713,19 @@ class AutoencoderSummarizer:
         """
         from nltk.tokenize import sent_tokenize
         import nltk
+        
+        # Téléchargement automatique de punkt si nécessaire
         try:
             nltk.data.find('tokenizers/punkt')
         except LookupError:
-            nltk.download('punkt')
+            print("📥 Téléchargement automatique de punkt pour la tokenisation...")
+            try:
+                nltk.download('punkt', quiet=True)
+                print("✅ punkt téléchargé avec succès")
+            except Exception as e:
+                print(f"❌ Erreur lors du téléchargement de punkt: {e}")
+                return [], [text]  # Retourne le texte entier si échec
+        
         sentences = sent_tokenize(text)
         if len(sentences) < 2:
             return [], sentences
@@ -717,16 +772,41 @@ class AutoencoderSummarizer:
         - Sauvegarde le modèle entraîné.
         """
         print("🔄 Préparation des données pour l'autoencodeur...")
+        
+        # Entraîner le tokenizer partagé si nécessaire
+        if not self.tokenizer.is_fitted:
+            print("🔄 Entraînement du tokenizer partagé...")
+            # Extraire toutes les phrases pour entraîner le tokenizer
+            all_sentences_for_tokenizer = []
+            for text in texts:
+                from nltk.tokenize import sent_tokenize
+                sentences = sent_tokenize(text)
+                all_sentences_for_tokenizer.extend(sentences)
+            
+            if len(all_sentences_for_tokenizer) > 0:
+                self.tokenizer.fit_on_texts(all_sentences_for_tokenizer)
+                print(f"✅ Tokenizer entraîné sur {len(all_sentences_for_tokenizer)} phrases")
+            else:
+                print("❌ Aucune phrase trouvée pour entraîner le tokenizer")
+                return
+        
         all_sentences = []
+        all_sentence_vectors = []
         for text in texts:
-            sentence_vectors, _ = self.preprocess_sentences(text)
+            sentence_vectors, original_sentences = self.preprocess_sentences(text)
             if len(sentence_vectors) > 0:
-                all_sentences.extend(sentence_vectors)
+                all_sentences.extend(original_sentences)
+                all_sentence_vectors.extend(sentence_vectors)
+        
         if len(all_sentences) < 10:
             print("⚠️ Pas assez de phrases pour entraîner l'autoencodeur")
+            print(f"   Phrases trouvées: {len(all_sentences)}")
+            print(f"   Textes analysés: {len(texts)}")
             return
-        X_train = np.array(all_sentences)
+        
+        X_train = np.array(all_sentence_vectors)
         print(f"Nombre total de phrases pour l'entraînement : {X_train.shape[0]}")
+        print(f"Forme des données d'entraînement : {X_train.shape}")
         print("🔄 Construction de l'autoencodeur...")
         self.build_autoencoder()
         print("🔄 Entraînement de l'autoencodeur avec early stopping...")
@@ -829,6 +909,34 @@ class AutoencoderSummarizer:
         plt.close()
         
         print("✅ Métriques Autoencodeur générées dans app/performances/")
+
+    def evaluate(self):
+        """
+        Évalue l'autoencodeur et génère les métriques de performance.
+        Cette méthode est appelée automatiquement après l'entraînement.
+        """
+        if self.history is None:
+            print("❌ L'autoencodeur n'a pas encore été entraîné!")
+            return
+        
+        print("📊 ÉVALUATION DE L'AUTOENCODEUR")
+        print("="*50)
+        
+        # Métriques finales
+        final_loss = self.history.history['loss'][-1]
+        final_val_loss = self.history.history['val_loss'][-1]
+        final_accuracy = self.history.history['accuracy'][-1]
+        final_val_accuracy = self.history.history['val_accuracy'][-1]
+        
+        print(f"📈 Loss finale (entraînement) : {final_loss:.4f}")
+        print(f"📈 Loss finale (validation) : {final_val_loss:.4f}")
+        print(f"📈 Accuracy finale (entraînement) : {final_accuracy:.4f}")
+        print(f"📈 Accuracy finale (validation) : {final_val_accuracy:.4f}")
+        
+        # Génération des métriques de performance
+        self._generate_performance_metrics()
+        
+        print("✅ Évaluation de l'autoencodeur terminée!")
 
     def summarize(self, text, num_sentences=3):
         """

@@ -23,7 +23,13 @@ from bs4 import BeautifulSoup
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
-    nltk.download('punkt')
+    print("📥 Téléchargement automatique de punkt pour la création de données...")
+    try:
+        nltk.download('punkt', quiet=True)
+        print("✅ punkt téléchargé avec succès")
+    except Exception as e:
+        print(f"❌ Erreur lors du téléchargement de punkt: {e}")
+        print("Le script continuera mais pourrait avoir des problèmes de tokenisation")
 
 # ============================================================================
 # CONFIGURATION DES CATÉGORIES REGROUPÉES
@@ -91,13 +97,13 @@ CATEGORY_COUNTS = Counter()
 # FONCTIONS UTILITAIRES
 # ============================================================================
 
-def extract_paragraphs_from_text(text, min_sentences=3, max_sentences=8):
-    """Extrait des paragraphes cohérents d'un texte."""
+def extract_paragraphs_from_text(text, min_sentences=5, max_sentences=15):
+    """Extrait des paragraphes cohérents d'un texte avec plus de phrases."""
     sentences = sent_tokenize(text)
     paragraphs = []
     
     if len(sentences) < min_sentences:
-        return [text] if len(text) > 200 else []
+        return [text] if len(text) > 300 else []
     
     # Création de paragraphes avec plusieurs phrases
     current_paragraph = []
@@ -107,24 +113,85 @@ def extract_paragraphs_from_text(text, min_sentences=3, max_sentences=8):
         # Créer un paragraphe quand on a assez de phrases
         if len(current_paragraph) >= min_sentences:
             paragraph_text = ' '.join(current_paragraph)
-            if len(paragraph_text) > 200:  # Paragraphe assez long
+            if len(paragraph_text) > 300:  # Paragraphe plus long
                 paragraphs.append(paragraph_text)
             current_paragraph = []
         
         # Limiter la taille du paragraphe
         if len(current_paragraph) >= max_sentences:
             paragraph_text = ' '.join(current_paragraph)
-            if len(paragraph_text) > 200:
+            if len(paragraph_text) > 300:
                 paragraphs.append(paragraph_text)
             current_paragraph = []
     
     # Ajouter le dernier paragraphe s'il est assez long
     if current_paragraph:
         paragraph_text = ' '.join(current_paragraph)
-        if len(paragraph_text) > 200:
+        if len(paragraph_text) > 300:
             paragraphs.append(paragraph_text)
     
     return paragraphs
+
+def extract_long_paragraphs_from_text(text, target_sentences=12, min_sentences=8):
+    """Extrait des paragraphes longs avec beaucoup de phrases pour l'autoencodeur."""
+    sentences = sent_tokenize(text)
+    paragraphs = []
+    
+    if len(sentences) < min_sentences:
+        return []
+    
+    # Création de paragraphes longs
+    current_paragraph = []
+    for sentence in sentences:
+        current_paragraph.append(sentence)
+        
+        # Créer un paragraphe quand on a assez de phrases
+        if len(current_paragraph) >= target_sentences:
+            paragraph_text = ' '.join(current_paragraph)
+            if len(paragraph_text) > 500:  # Paragraphe très long
+                paragraphs.append(paragraph_text)
+            current_paragraph = []
+        
+        # Limiter la taille du paragraphe (max 20 phrases)
+        if len(current_paragraph) >= 20:
+            paragraph_text = ' '.join(current_paragraph)
+            if len(paragraph_text) > 500:
+                paragraphs.append(paragraph_text)
+            current_paragraph = []
+    
+    # Ajouter le dernier paragraphe s'il est assez long
+    if current_paragraph and len(current_paragraph) >= min_sentences:
+        paragraph_text = ' '.join(current_paragraph)
+        if len(paragraph_text) > 500:
+            paragraphs.append(paragraph_text)
+    
+    return paragraphs
+
+def ensure_long_paragraphs_ratio(paragraphs, target_ratio=0.5, min_sentences=10):
+    """
+    S'assure qu'au moins target_ratio des paragraphes ont plus de min_sentences phrases.
+    Si ce n'est pas le cas, essaie de créer des paragraphes plus longs.
+    """
+    if not paragraphs:
+        return paragraphs
+    
+    # Compter les paragraphes longs
+    long_paragraphs = 0
+    for paragraph in paragraphs:
+        sentences = sent_tokenize(paragraph)
+        if len(sentences) >= min_sentences:
+            long_paragraphs += 1
+    
+    current_ratio = long_paragraphs / len(paragraphs)
+    
+    if current_ratio >= target_ratio:
+        return paragraphs
+    
+    print(f"⚠️ Ratio de paragraphes longs: {current_ratio:.2f} (objectif: {target_ratio})")
+    print(f"   Paragraphes longs: {long_paragraphs}/{len(paragraphs)}")
+    
+    # Essayer de créer des paragraphes plus longs
+    return paragraphs  # Pour l'instant, on garde les paragraphes existants
 
 def add_text_if_valid(text, category):
     """Ajoute un texte s'il est valide et pas en doublon."""
@@ -164,8 +231,15 @@ def fetch_wikipedia_paragraphs(category_name, wiki_labels):
                     page = wikipedia.page(title)
                     content = page.content
                     
-                    # Extraction de paragraphes
-                    paragraphs = extract_paragraphs_from_text(content)
+                    # Extraction de paragraphes (essayer d'abord les longs)
+                    paragraphs = extract_long_paragraphs_from_text(content)
+                    
+                    # Si pas assez de paragraphes longs, utiliser la méthode normale
+                    if len(paragraphs) < 3:
+                        paragraphs = extract_paragraphs_from_text(content)
+                    
+                    # S'assurer du ratio de paragraphes longs
+                    paragraphs = ensure_long_paragraphs_ratio(paragraphs)
                     
                     for paragraph in paragraphs:
                         if add_text_if_valid(paragraph, category_name):
@@ -193,18 +267,18 @@ def fetch_arxiv_paragraphs(category_name, arxiv_codes):
         
     print(f"🧪 Collecting ArXiv paragraphs for {category_name}...")
     
-client = arxiv.Client()
+    client = arxiv.Client()
 
     for code in arxiv_codes:
         if CATEGORY_COUNTS[category_name] >= TARGET_PER_CATEGORY:
             break
             
         try:
-    search = arxiv.Search(
-        query=f"cat:{code}",
+            search = arxiv.Search(
+                query=f"cat:{code}",
                 max_results=1000,
-        sort_by=arxiv.SortCriterion.SubmittedDate
-    )
+                sort_by=arxiv.SortCriterion.SubmittedDate
+            )
             
             for result in tqdm(client.results(search), desc=f"Processing {code}"):
                 if CATEGORY_COUNTS[category_name] >= TARGET_PER_CATEGORY:
@@ -216,13 +290,22 @@ client = arxiv.Client()
                 if len(abstract) > 200:
                     # Ajouter le titre pour enrichir le contexte
                     enriched_text = f"{result.title}. {abstract}"
-                    paragraphs = extract_paragraphs_from_text(enriched_text)
+                    
+                    # Extraction de paragraphes (essayer d'abord les longs)
+                    paragraphs = extract_long_paragraphs_from_text(enriched_text)
+                    
+                    # Si pas assez de paragraphes longs, utiliser la méthode normale
+                    if len(paragraphs) < 2:
+                        paragraphs = extract_paragraphs_from_text(enriched_text)
+                    
+                    # S'assurer du ratio de paragraphes longs
+                    paragraphs = ensure_long_paragraphs_ratio(paragraphs)
                     
                     for paragraph in paragraphs:
                         if add_text_if_valid(paragraph, category_name):
                             pass
                         else:
-            break
+                            break
                             
         except Exception as e:
             print(f"⚠️ Erreur ArXiv pour {code}: {e}")
@@ -266,7 +349,16 @@ def fetch_conversation_rss(category_name, keywords):
                     content_div = soup.find('div', class_='content-body')
                     if content_div:
                         content = content_div.get_text()
-                        paragraphs = extract_paragraphs_from_text(content)
+                        
+                        # Extraction de paragraphes (essayer d'abord les longs)
+                        paragraphs = extract_long_paragraphs_from_text(content)
+                        
+                        # Si pas assez de paragraphes longs, utiliser la méthode normale
+                        if len(paragraphs) < 2:
+                            paragraphs = extract_paragraphs_from_text(content)
+                        
+                        # S'assurer du ratio de paragraphes longs
+                        paragraphs = ensure_long_paragraphs_ratio(paragraphs)
                         
                         for paragraph in paragraphs:
                             if add_text_if_valid(paragraph, category_name):
@@ -325,10 +417,10 @@ def main():
     random.shuffle(ROWS)
     
     # Sauvegarde
-    output_file = 'appdata/enriched_dataset_paragraphs.csv'
+    output_file = 'enriched_dataset_paragraphs.csv'
     with open(output_file, 'w', encoding='utf-8', newline='') as f:
-    writer = csv.writer(f)
-    writer.writerow(['text', 'category'])
+        writer = csv.writer(f)
+        writer.writerow(['text', 'category'])
         writer.writerows(ROWS)
     
     print(f"✅ Dataset sauvegardé : {len(ROWS)} entrées dans {output_file}")
@@ -344,4 +436,4 @@ def main():
     print(f"  Max : {max(text_lengths)} caractères")
 
 if __name__ == "__main__":
-    main()
+    main() 

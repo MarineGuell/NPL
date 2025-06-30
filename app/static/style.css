@@ -59,7 +59,7 @@ h1, h2, h3 {
 
 /* Style pour les boutons */
 .stButton>button {
-    background-color: #4CAF50;
+    background-color: #4c6a4d;
     color: #FFFFFF;
     border: none;
     border-radius: 5px;
@@ -67,7 +67,8 @@ h1, h2, h3 {
 }
 
 .stButton>button:hover {
-    background-color: #45a049;
+    background-color: #60a162;
+    color: #FFFFFF;
 }
 
 /* Style pour les spinners */
