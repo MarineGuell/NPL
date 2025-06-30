@@ -214,6 +214,7 @@ class TextProcessor:
                     "model": "lda",
                     "summary": summary
                 })
+            print("Terminé")
             return result
         except Exception as e:
             return {"error": f"Erreur lors du traitement : {e}"}

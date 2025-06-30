@@ -272,15 +272,20 @@ def main():
                 
                 if task == "Classification (Machine Learning)":
                     response = orchestrator.classify(prompt, model_type='ml')
+                    print('Tu en fais quoi ?')
 
                 elif task == "Classification (Deep Learning)":
                     response = orchestrator.classify(prompt, model_type='dl')
+                    print('Tu en fais quoi ?')
 
                 elif task == "Summarization (Machine Learning)":
                     response = orchestrator.summarize(prompt, model_type='ml')
+                    print('Tu en fais quoi ?')
 
                 elif task == "Summarization (Deep Learning)":
                     response = orchestrator.summarize(prompt, model_type='dl')
+                    print('Tu en fais quoi ?')
+
                     
                 elif task == "Wikipedia Search":
                     # === RECHERCHE WIKIPEDIA INTELLIGENTE ===
