@@ -108,12 +108,24 @@ def train_autoencoder(texts, labels):
     print("🔄 ENTRAÎNEMENT DE L'AUTOENCODEUR")
     print("="*60)
     
+    # Afficher le chemin absolu du dataset
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), args.dataset)) if 'args' in globals() else None
+    if dataset_path:
+        print(f"📁 Chemin absolu du dataset utilisé : {dataset_path}")
+    print(f"📝 Nombre de textes reçus : {len(texts)}")
+    
     # Prétraitement spécial pour l'autoencodeur (préserve les phrases)
     print("🔧 Prétraitement spécial pour l'autoencodeur...")
     preprocessor = TextPreprocessor()
     autoencoder_texts = preprocessor.transform_for_autoencoder(texts)
-    
     print(f"📝 {len(autoencoder_texts)} textes prétraités pour l'autoencodeur")
+    
+    # Compter le nombre total de phrases
+    from nltk.tokenize import sent_tokenize
+    total_phrases = 0
+    for text in autoencoder_texts:
+        total_phrases += len(sent_tokenize(text))
+    print(f"📊 Nombre total de phrases trouvées dans le corpus : {total_phrases}")
     
     # Afficher quelques exemples pour vérification
     print("\n📋 Exemples de textes prétraités pour l'autoencodeur:")
@@ -202,8 +214,7 @@ Exemples d'utilisation :
         parser.error("Vous ne pouvez pas utiliser --all et --model en même temps")
     
     # Chemin du dataset
-    dataset_path = os.path.join(os.path.dirname(__file__), args.dataset)
-    
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), args.dataset))
     if not os.path.exists(dataset_path):
         print(f"❌ Erreur : Le fichier {dataset_path} n'existe pas!")
         print("💡 Assurez-vous d'avoir créé le dataset avec create_data.py")
@@ -243,7 +254,7 @@ Exemples d'utilisation :
         dl_model = train_dl_model(processed_texts, labels)
         
         # Entraînement Autoencodeur
-        autoencoder = train_autoencoder(processed_texts, labels)
+        autoencoder = train_autoencoder(texts, labels)
         
     elif args.model == 'ml':
         print("\n🎯 ENTRAÎNEMENT DU MODÈLE ML")
@@ -258,7 +269,7 @@ Exemples d'utilisation :
     elif args.model == 'autoencoder':
         print("\n🎯 ENTRAÎNEMENT DE L'AUTOENCODEUR")
         print("="*60)
-        autoencoder = train_autoencoder(processed_texts, labels)
+        autoencoder = train_autoencoder(texts, labels)
     
     # Évaluation si demandée
     if args.evaluate:
