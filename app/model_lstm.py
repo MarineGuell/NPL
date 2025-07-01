@@ -57,17 +57,17 @@ class DLModel:
         self.y_test_classes = None
         
         # Chargement automatique si le modèle existe déjà
-        if os.path.exists(self.MODEL_PATH):
+        if os.path.exists(self.MODEL_PATH): # model
             from tensorflow.keras.models import load_model
             self.model = load_model(self.MODEL_PATH)
             print(f"✅ Modèle DL chargé depuis {self.MODEL_PATH}")
             
-        if os.path.exists(self.ENCODER_PATH):
+        if os.path.exists(self.ENCODER_PATH): #encodeur
             with open(self.ENCODER_PATH, 'rb') as f:
                 self.encoder = pickle.load(f)
             print(f"✅ Label encoder chargé depuis {self.ENCODER_PATH}")
 
-        if os.path.exists(self.CLASSES_PATH):
+        if os.path.exists(self.CLASSES_PATH): # 
             self.encoder.classes_ = np.load(self.CLASSES_PATH, allow_pickle=True)
             print(f"✅ Mapping des labels (ML) chargé depuis {self.CLASSES_PATH} : {self.encoder.classes_}")
         else:
@@ -80,7 +80,7 @@ class DLModel:
 
     def prepare(self, texts, labels):
         """
-        Prépare les données pour le modèle DL.
+        Prépare les données 
         
         entrées:
             texts: Les textes
@@ -107,7 +107,7 @@ class DLModel:
 
     def build_model(self, num_classes):
         """
-        Construit l'architecture du modèle.
+        Construit l'architecture du modèle
         
         entrées:
             num_classes (int): Nombre de classes
@@ -117,9 +117,11 @@ class DLModel:
             Bidirectional(LSTM(64, return_sequences=True)),
             BatchNormalization(),
             Dropout(0.3),
+
             Bidirectional(LSTM(32)),
             BatchNormalization(),
             Dropout(0.3),
+            
             Dense(64, activation='relu'),
             BatchNormalization(),
             Dropout(0.3),
