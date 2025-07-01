@@ -3,11 +3,11 @@
 ## Fonctionnalités Principales
 
 ### 1. Classification de Texte
-- **Classification ML** : Pipeline TF-IDF + Naive Bayes optimisé par GridSearchCV
+- **Classification ML** : Pipeline TF-IDF + Naive Bayes
 - **Classification DL** : Réseau LSTM bidirectionnel avec BatchNormalization
 
 ### 2. Résumé de Texte
-- **Résumé ML** : Méthode extractive basée sur la similarité cosinus TF-IDF
+- **Résumé ML** : Méthode basée sur la similarité cosinus TF-IDF
 - **Résumé DL** : Autoencodeur extractif (sélection des phrases les mieux reconstruites)
 
 ### 3. Recherche Wikipedia

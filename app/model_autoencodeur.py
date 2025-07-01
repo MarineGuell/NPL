@@ -110,7 +110,7 @@ class AutoencoderSummarizer:
         
         self.model.compile(
             loss='sparse_categorical_crossentropy',
-            optimizer='adam',
+            optimizer='adam',#
             metrics=['accuracy']
         )
         
@@ -118,11 +118,11 @@ class AutoencoderSummarizer:
 
     def train(self, texts, epochs=15, batch_size=32):
         """
-        Entraîne l'autoencodeur sur toutes les phrases du dataset avec early stopping.
-        - Découpe chaque texte en phrases, vectorise.
-        - Concatène toutes les phrases pour former le jeu d'entraînement.
-        - Entraîne l'autoencodeur à reconstruire chaque phrase.
-        - Sauvegarde le modèle entraîné.
+        Entraîne l'autoencodeur
+        - Découpe chaque texte en phrases, vectorise
+        - Concatène toutes les phrases pour former le jeu d'entraînement
+        - Entraîne l'autoencodeur à reconstruire chaque phrase
+        - Sauvegarde
         """
         print("🔄 Préparation des données pour l'autoencodeur...")
         
@@ -143,6 +143,7 @@ class AutoencoderSummarizer:
                 print("❌ Aucune phrase trouvée pour entraîner le tokenizer")
                 return
         
+        #preprocess
         all_sentences = []
         all_sentence_vectors = []
         for text in texts:
@@ -157,6 +158,7 @@ class AutoencoderSummarizer:
             print(f"   Textes analysés: {len(texts)}")
             return
         
+        #train
         X_train = np.array(all_sentence_vectors)
         print(f"Nombre total de phrases pour l'entraînement : {X_train.shape[0]}")
         print(f"Forme des données d'entraînement : {X_train.shape}")
@@ -177,7 +179,7 @@ class AutoencoderSummarizer:
             patience=3,
             min_lr=1e-7,
             verbose=1
-        )
+        )# callback
         
         self.history = self.model.fit(
             X_train, X_train,
@@ -190,12 +192,11 @@ class AutoencoderSummarizer:
         self.model.save(self.MODEL_PATH)
         print(f"✅ Autoencodeur sauvegardé dans {self.MODEL_PATH}")
         
-        # Génération automatique des performances
-        self._generate_performance_metrics()
+        self._generate_performance_metrics()#  performances
 
     def _generate_performance_metrics(self):
         """
-        Génère automatiquement les métriques de performance et les sauvegarde.
+        Génère les métriques de performance et les sauvegarde.
         """
         if self.history is None:
             print("⚠️ Pas d'historique d'entraînement pour générer les métriques")
@@ -204,13 +205,13 @@ class AutoencoderSummarizer:
         # Création du dossier performances
         os.makedirs('app/performances', exist_ok=True)
         
-        # 1. Métriques finales
+        # Métriques finales
         final_loss = self.history.history['loss'][-1]
         final_val_loss = self.history.history['val_loss'][-1]
         final_accuracy = self.history.history['accuracy'][-1]
         final_val_accuracy = self.history.history['val_accuracy'][-1]
         
-        # 2. Sauvegarde des métriques en CSV
+        # Sauvegarde des métriques en CSV
         metrics_df = pd.DataFrame({
             'Métrique': ['Loss finale (entraînement)', 'Loss finale (validation)', 
                         'Accuracy finale (entraînement)', 'Accuracy finale (validation)'],
@@ -218,11 +219,11 @@ class AutoencoderSummarizer:
         })
         metrics_df.to_csv('app/performances/autoencoder_metrics.csv', index=False)
         
-        # 3. Sauvegarde de l'historique d'entraînement
+        # Sauvegarde de l'historique d'entraînement
         history_df = pd.DataFrame(self.history.history)
         history_df.to_csv('app/performances/autoencoder_training_history.csv', index=False)
         
-        # 4. Courbes d'apprentissage
+        # Courbes d'apprentissage
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
         
         # Loss
@@ -291,12 +292,13 @@ class AutoencoderSummarizer:
         if len(sentence_vectors) == 0:
             return "*splashes water* 🐸 This text is too short to summarize, kero!"
         reconstruction_errors = []
+        
         for i, sentence_vector in enumerate(sentence_vectors):
             reconstructed = self.model.predict(sentence_vector.reshape(1, -1), verbose=0)
-            original_sequence = sentence_vector
-            reconstructed_sequence = reconstructed[0].argmax(axis=-1)
-            error = np.mean(np.abs(original_sequence - reconstructed_sequence))
-            reconstruction_errors.append((i, error))
+            original_sequence = sentence_vector 
+            reconstructed_sequence = reconstructed[0].argmax(axis=-1) 
+            error = np.mean(np.abs(original_sequence - reconstructed_sequence)) 
+            reconstruction_errors.append((i, error)) 
         reconstruction_errors.sort(key=lambda x: x[1])
         selected_indices = [idx for idx, _ in reconstruction_errors[:num_sentences]]
         selected_indices.sort()

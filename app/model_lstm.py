@@ -121,7 +121,7 @@ class DLModel:
             Bidirectional(LSTM(32)),
             BatchNormalization(),
             Dropout(0.3),
-            
+
             Dense(64, activation='relu'),
             BatchNormalization(),
             Dropout(0.3),
@@ -322,7 +322,7 @@ class DLModel:
 
     def predict(self, texts):
         """
-        Fait des prédictions sur de nouveaux textes.
+        Texte > label
         """
         if self.model is None:
             raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
@@ -330,7 +330,7 @@ class DLModel:
             raise RuntimeError("Tokenizer DL non entraîné ! Veuillez l'entraîner ou le charger avant la prédiction.")
         if not hasattr(self.encoder, 'classes_') or len(self.encoder.classes_) == 0:
             print(f"❌ Mapping des labels absent ou vide : {getattr(self.encoder, 'classes_', None)}")
-            raise RuntimeError("Le mapping des labels (encoder.classes_) est absent ou vide ! Vérifiez le fichier ml_classes.npy ou réentraînez le modèle.")
+            raise RuntimeError("Le mapping des labels (encoder.classes_) est absent ou vide ! Vérifiez le fichier  .npy ou réentraînez le modèle.")
         sequences = self.tokenizer.texts_to_sequences(texts)
         padded = pad_sequences(sequences, maxlen=self.max_len)
         preds = self.model.predict(padded)
@@ -341,13 +341,7 @@ class DLModel:
 
     def predict_proba(self, texts):
         """
-        Retourne les probabilités de prédiction.
-        
-        entrées:
-            texts: Les textes à classifier
-            
-        sorties:
-            array: Les probabilités
+        Texte > probabilité
         """
         if self.model is None:
             raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
@@ -358,9 +352,6 @@ class DLModel:
         return self.model.predict(padded)
 
     def evaluate(self):
-        """
-        Évalue le modèle et génère les métriques de performance.
-        """
         if self.X_test is None or self.y_pred is None:
             print("❌ Pas de données de test disponibles pour l'évaluation.")
             return

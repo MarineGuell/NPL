@@ -4,10 +4,10 @@
 # ============================================================================
 
 Classification par Machine Learning
-   - TF-IDF + Naive Bayes avec optimisation GridSearchCV.
-   - Sauvegarde automatique du vectorizer dans app/models/
-   - Évaluation complète (matrice confusion, courbe apprentissage)
-   - Prétraitement : nettoyage complet (ponctuation, URLs, stopwords, lemmatisation)
+   - TF-IDF + Naive Bayes
+   - Sauvegarde du vectorizer dans app/models/
+   - Évaluation (matrice confusion, courbe apprentissage)
+   - Prétraitement : nettoyage (ponctuation, URLs, stopwords, lemmatisation)
    
 """
 

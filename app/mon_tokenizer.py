@@ -15,7 +15,7 @@ class SharedTokenizer:
     - L'autoencodeur (AutoencoderSummarizer)
     """
     
-    def __init__(self, max_words=5000, max_len=200):
+    def __init__(self, max_words=5000, max_len=200): # TODO d'autres taille ?
         """
         Initialise le tokenizer partagé.
         
@@ -37,8 +37,8 @@ class SharedTokenizer:
         """
         self.tokenizer.fit_on_texts(texts)
         self.is_fitted = True
-        print(f"✅ Tokenizer entraîné sur {len(texts)} textes")
-        print(f"   Vocabulaire: {len(self.tokenizer.word_index)} mots")
+        print(f"Tokenizer entraîné sur {len(texts)} textes")
+        print(f"Vocabulaire: {len(self.tokenizer.word_index)} mots")
         
     def texts_to_sequences(self, texts):
         """
