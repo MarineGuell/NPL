@@ -69,6 +69,6 @@ streamlit run app/interface.py
 
 Ce projet a été développé dans le cadre du cours de Natural Language Processing enseigné par Nicolas Miotto, à l'école Ynov Toulouse
 
-Il a était dévellopper avec l'aide de l'IA générative Claude
+Il a était dévelloppé avec l'aide de l'IA générative Claude
 
 ------------------------------------------------------------
