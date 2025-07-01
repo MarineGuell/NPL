@@ -209,7 +209,7 @@ def main():
                 
                 # Recherche Wikipedia     
                 elif task == "Wikipedia Search":
-                    search_result = wiki_search.get_page_summary(prompt, sentences=4)
+                    search_result = wiki_search.get_page_summary(prompt)
                     if search_result['status'] == 'success':
                         # Vérifie si le titre retourné est différent de la requête utilisateur (non strictement égal, insensible à la casse et espaces)
                         if search_result['title'].strip().lower() != prompt.strip().lower():

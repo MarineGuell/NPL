@@ -3,7 +3,7 @@
 # MODÈLE DeepLearning
 # ============================================================================
 
-  Classification par Deep Learning  
+Classification par Deep Learning  
    - Architecture LSTM bidirectionnel avec BatchNormalization et Dropout.
    - Sauvegarde automatique du tokenizer et encoder dans app/models/
    - Même prétraitement que ML + tokenization Keras
@@ -33,6 +33,8 @@ class DLModel:
     """
     MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "dl_model.h5")
     ENCODER_PATH = os.path.join(os.path.dirname(__file__), "models", "dl_label_encoder.pkl")
+    CLASSES_PATH = os.path.join(os.path.dirname(__file__), "models", "ml_classes.npy")
+    TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "models", "shared_tokenizer.pkl")
     
     def __init__(self, max_words=5000, max_len=200):
         """
@@ -65,6 +67,17 @@ class DLModel:
                 self.encoder = pickle.load(f)
             print(f"✅ Label encoder chargé depuis {self.ENCODER_PATH}")
 
+        if os.path.exists(self.CLASSES_PATH):
+            self.encoder.classes_ = np.load(self.CLASSES_PATH, allow_pickle=True)
+            print(f"✅ Mapping des labels (ML) chargé depuis {self.CLASSES_PATH} : {self.encoder.classes_}")
+        else:
+            print(f"⚠️ Mapping des labels (ML) NON trouvé dans {self.CLASSES_PATH}")
+
+        if os.path.exists(self.TOKENIZER_PATH):
+            self.tokenizer.load_tokenizer(self.TOKENIZER_PATH)
+        else:
+            print(f"⚠️ Tokenizer partagé NON trouvé dans {self.TOKENIZER_PATH}")
+
     def prepare(self, texts, labels):
         """
         Prépare les données pour le modèle DL.
@@ -76,14 +89,20 @@ class DLModel:
         sorties:
             tuple: (X, y) préparés
         """
-        # Vérification du tokenizer
+        # Entraînement du tokenizer si nécessaire
         if not self.tokenizer.is_fitted:
-            print("⚠️ Tokenizer non fitted, entraînement automatique...")
             self.tokenizer.fit_on_texts(texts)
+        
+        # Conversion en séquences
         sequences = self.tokenizer.texts_to_sequences(texts)
         X = pad_sequences(sequences, maxlen=self.max_len)
-        y = self.encoder.fit_transform(labels)
-        y = to_categorical(y)
+        
+        # Encodage des labels
+        y = to_categorical(self.encoder.fit_transform(labels))
+        
+        print(f"✅ Données DL préparées: {X.shape[0]} échantillons, {X.shape[1]} tokens")
+        print(f"   Classes: {len(self.encoder.classes_)}")
+        
         return X, y
 
     def build_model(self, num_classes):
@@ -95,12 +114,15 @@ class DLModel:
         """
         self.model = Sequential([
             Embedding(self.max_words, 128, input_length=self.max_len),
-            Bidirectional(LSTM(64, dropout=0.2, return_sequences=True)),
+            Bidirectional(LSTM(64, return_sequences=True)),
             BatchNormalization(),
-            Dropout(0.5),
+            Dropout(0.3),
             Bidirectional(LSTM(32)),
+            BatchNormalization(),
+            Dropout(0.3),
             Dense(64, activation='relu'),
-            Dropout(0.5),
+            BatchNormalization(),
+            Dropout(0.3),
             Dense(num_classes, activation='softmax')
         ])
         
@@ -171,8 +193,14 @@ class DLModel:
         self.model.save(self.MODEL_PATH)
         with open(self.ENCODER_PATH, 'wb') as f:
             pickle.dump(self.encoder, f)
+        # Sauvegarde du mapping des labels (partagé avec ML)
+        np.save(self.CLASSES_PATH, self.encoder.classes_)
+        print(f"Mapping des labels (ML) sauvegardé dans {self.CLASSES_PATH}")
         print(f"Modèle DL sauvegardé dans {self.MODEL_PATH}")
         print(f"Label encoder sauvegardé dans {self.ENCODER_PATH}")
+        
+        # Sauvegarde du tokenizer partagé
+        self.tokenizer.save_tokenizer(self.TOKENIZER_PATH)
         
         # Génération automatique des performances
         self._generate_performance_metrics()
@@ -293,21 +321,21 @@ class DLModel:
     def predict(self, texts):
         """
         Fait des prédictions sur de nouveaux textes.
-        
-        entrées:
-            texts: Les textes à classifier
-            
-        sorties:
-            list: Les prédictions
         """
         if self.model is None:
             raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
         if not self.tokenizer.is_fitted:
             raise RuntimeError("Tokenizer DL non entraîné ! Veuillez l'entraîner ou le charger avant la prédiction.")
+        if not hasattr(self.encoder, 'classes_') or len(self.encoder.classes_) == 0:
+            print(f"❌ Mapping des labels absent ou vide : {getattr(self.encoder, 'classes_', None)}")
+            raise RuntimeError("Le mapping des labels (encoder.classes_) est absent ou vide ! Vérifiez le fichier ml_classes.npy ou réentraînez le modèle.")
         sequences = self.tokenizer.texts_to_sequences(texts)
         padded = pad_sequences(sequences, maxlen=self.max_len)
         preds = self.model.predict(padded)
-        return [self.encoder.classes_[np.argmax(p)] for p in preds]
+        # On prend l'indice de la classe la plus probable pour chaque prédiction
+        pred_indices = [np.argmax(p) for p in preds]
+        pred_labels = [self.encoder.classes_[i] for i in pred_indices]
+        return pred_labels
 
     def predict_proba(self, texts):
         """

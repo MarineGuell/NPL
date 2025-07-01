@@ -53,3 +53,14 @@ class SharedTokenizer:
         if not self.is_fitted:
             raise RuntimeError("Le tokenizer n'est pas encore entraîné!")
         return self.tokenizer.texts_to_sequences(texts)
+
+    def save_tokenizer(self, path):
+        with open(path, 'wb') as f:
+            pickle.dump(self.tokenizer, f)
+        print(f"✅ Tokenizer sauvegardé dans {path}")
+
+    def load_tokenizer(self, path):
+        with open(path, 'rb') as f:
+            self.tokenizer = pickle.load(f)
+        self.is_fitted = True
+        print(f"✅ Tokenizer chargé depuis {path}")

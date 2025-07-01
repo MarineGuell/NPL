@@ -15,8 +15,8 @@ import joblib
 import os
 import sys
 
-# Ajout du chemin pour les imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# # Ajout du chemin pour les imports
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils import TextPreprocessor
 from model_autoencodeur import AutoencoderSummarizer
@@ -31,13 +31,6 @@ class WikipediaIntelligentSearch:
     def get_page_summary(self, page_title):
         """
         Récupère le résumé d'une page Wikipedia.
-        
-        Args:
-            page_title (str): Titre de la page
-            sentences (int): Nombre de phrases dans le résumé
-            
-        Returns:
-            dict: Résumé avec statut et contenu
         """
         try:
             summary = wikipedia.summary(page_title)

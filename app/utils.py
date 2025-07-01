@@ -80,13 +80,7 @@ class TextPreprocessor:
 
     def clean(self, text):
         """
-        Nettoie un texte de manière approfondie.
-        
-        entrées:
-            text (str): Le texte à nettoyer
-            
-        sorties:
-            str: Le texte nettoyé
+        Nettoiyage du texte avce expression régulière
         """
         # Basic cleaning
         text = text.strip()

@@ -41,10 +41,12 @@ class AutoencoderSummarizer:
     
     def __init__(self, max_words=5000, embedding_dim=128, max_sentence_length=50):
         """
-        Initialise le modèle d'autoencodeur pour le résumé.
-        - max_words : taille du vocabulaire pour la tokenisation.
-        - embedding_dim : dimension des embeddings de mots.
-        - max_sentence_length : longueur maximale des phrases (padding/troncature).
+        Initialise l'autoencodeur.
+        
+        Args:
+            max_words (int): Taille maximale du vocabulaire
+            embedding_dim (int): Dimension des embeddings
+            max_sentence_length (int): Longueur maximale des phrases
         """
         self.max_words = max_words
         self.embedding_dim = embedding_dim
@@ -68,43 +70,51 @@ class AutoencoderSummarizer:
             - sentence_vectors : matrice (nb_phrases, max_sentence_length)
             - original_sentences : phrases originales (pour le résumé final)
         """
-
+        from nltk.tokenize import sent_tokenize
         
         # Découpage en phrases
         sentences = sent_tokenize(text)
         
-        # Utilise le tokenizer partagé
-        sequences = self.tokenizer.texts_to_sequences(sentences)
+        # Filtrage des phrases trop courtes ou trop longues
+        filtered_sentences = []
+        for sentence in sentences:
+            if 5 <= len(sentence.split()) <= self.max_sentence_length:
+                filtered_sentences.append(sentence)
+        
+        if len(filtered_sentences) == 0:
+            return [], []
+        
+        # Vectorisation des phrases
+        sequences = self.tokenizer.texts_to_sequences(filtered_sentences)
         sentence_vectors = pad_sequences(sequences, maxlen=self.max_sentence_length)
-        return sentence_vectors, sentences
+        
+        return sentence_vectors, filtered_sentences
 
     def build_autoencoder(self):
         """
-        Construit l'architecture séquentielle de l'autoencodeur :
-        - Embedding : transforme les indices de mots en vecteurs denses.
-        - LSTM (encodeur) : encode la séquence en un vecteur latent.
-        - Dense : compression supplémentaire.
-        - RepeatVector : répète le vecteur latent pour chaque pas de temps.
-        - LSTM (decodeur) : reconstruit la séquence.
-        - TimeDistributed(Dense) : prédit un mot à chaque position.
+        Construit l'architecture de l'autoencodeur.
         """
-        from tensorflow.keras.layers import RepeatVector, TimeDistributed
         self.model = Sequential([
+            # Encoder
             Embedding(self.max_words, self.embedding_dim, input_length=self.max_sentence_length),
-            LSTM(64, return_sequences=False),
-            Dense(32, activation='relu'),
-            Dense(64, activation='relu'),
+            LSTM(64, return_sequences=True),
+            LSTM(32),
+            Dense(16, activation='relu'),
+            
+            # Decoder
             RepeatVector(self.max_sentence_length),
-            LSTM(self.embedding_dim, return_sequences=True),
+            LSTM(32, return_sequences=True),
+            LSTM(64, return_sequences=True),
             TimeDistributed(Dense(self.max_words, activation='softmax'))
         ])
+        
         self.model.compile(
             loss='sparse_categorical_crossentropy',
             optimizer='adam',
             metrics=['accuracy']
         )
-        self.encoder = Sequential(self.model.layers[:3])
-        self.decoder = Sequential(self.model.layers[3:])
+        
+        print("✅ Architecture autoencodeur construite")
 
     def train(self, texts, epochs=15, batch_size=32):
         """
@@ -235,19 +245,6 @@ class AutoencoderSummarizer:
         
         plt.tight_layout()
         plt.savefig('app/performances/autoencoder_learning_curves.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # 5. Architecture de l'autoencodeur
-        plt.figure(figsize=(12, 8))
-        plt.text(0.5, 0.9, 'Architecture de l\'Autoencodeur', fontsize=16, fontweight='bold', ha='center')
-        plt.text(0.5, 0.8, 'Embedding → LSTM → Dense → RepeatVector → LSTM → TimeDistributed', 
-                fontsize=12, ha='center')
-        plt.text(0.5, 0.7, f'Vocabulaire: {self.max_words} mots', fontsize=10, ha='center')
-        plt.text(0.5, 0.6, f'Embedding dim: {self.embedding_dim}', fontsize=10, ha='center')
-        plt.text(0.5, 0.5, f'Longueur max phrase: {self.max_sentence_length}', fontsize=10, ha='center')
-        plt.axis('off')
-        plt.tight_layout()
-        plt.savefig('app/performances/autoencoder_architecture.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         print("✅ Métriques Autoencodeur générées dans app/performances/")
