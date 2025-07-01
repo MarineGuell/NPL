@@ -1,133 +1,176 @@
-import joblib
-import re
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+"""
+Module principal du chatbot Kaeru - Orchestrateur des modèles ML/DL.
 
-from utils import summarize_text, search_wikipedia
+Ce module centralise l'utilisation des différents modèles (ML et DL) pour la classification
+et le résumé de textes. Il gère le chargement des modèles, le prétraitement des données
+et l'orchestration des prédictions.
+"""
 
-# Charger le modèle et le vectoriseur
-model = joblib.load("app/model.joblib")
-vectorizer = joblib.load("app/vectorizer.joblib")
+import numpy as np
+from transformers import pipeline
+from utils import DataLoader, TextPreprocessor, normalize_text
+from model_tfidf import MLModel
+from model_lstm import DLModel
+from model_autoencodeur import AutoencoderSummarizer
 
-# Prétraitement
-stop_words = set(stopwords.words('english'))
-lemmatizer = WordNetLemmatizer()
-
-def preprocess_text(text):
-    text = text.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    tokens = word_tokenize(text)
-    tokens = [word for word in tokens if word not in stop_words]
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
-    return " ".join(tokens)
-
-# Lancer le chatbot
-# def run_chatbot():
-#     print("🤖 Chatbot NLP - Catégorisation de texte")
-#     while True:
-#         user_input = input("Vous : ")
-#         if user_input.lower() in ["quit", "exit", "bye"]:
-#             print("Chatbot : À bientôt !")
-#             break
-
-#         clean = preprocess_text(user_input)
-#         vect = vectorizer.transform([clean])
-#         prediction = model.predict(vect)[0]
-
-#         print(f"Chatbot : Ce texte semble parler de **{prediction}**.")
-
-def run_chatbot():
-    print("🤖 Chatbot NLP - Classifieur + Résumeur")
-    print("Tapez 'resume: votre texte' pour générer un résumé.")
-    print("Tapez 'quit' pour quitter.")
+class TextProcessor:
+    """
+    Orchestrateur principal pour le traitement de textes avec les modèles ML/DL.
     
-    while True:
-        user_input = input("Vous : ")
-        if user_input.lower() in ["quit", "exit", "bye"]:
-            print("Chatbot : À bientôt !")
-            break
-
-        if user_input.lower().startswith("resume:"):
-            texte = user_input[7:].strip()
-            summary = summarize_text(texte)
-            print("Chatbot (résumé) :", summary)
-
-        elif user_input.lower().startswith("wiki:"):
-            query = user_input[5:].strip()
-            result = search_wikipedia(query)
-            print("Chatbot (wikipedia) :", result)
-
-        else:
-            clean = preprocess_text(user_input)
-            vect = vectorizer.transform([clean])
-            prediction = model.predict(vect)[0]
-            print(f"Chatbot (catégorie) : Ce texte semble parler de **{prediction}**.")
-
-
-class Chatbot:
-    def __init__(self):
-        self.model_name = "microsoft/DialoGPT-medium"
-        self.tokenizer = None
-        self.model = None
-        self.initialize_model()
-
-    def initialize_model(self):
-        """Initialise le modèle et le tokenizer"""
-        try:
-            print("🔄 Chargement du modèle DialoGPT...")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
-            print("✅ Modèle chargé avec succès !")
-        except Exception as e:
-            print(f"❌ Erreur lors de l'initialisation du modèle: {str(e)}")
-            raise
-
-    def generate_response(self, user_input: str) -> str:
-        """Génère une réponse basée sur l'entrée de l'utilisateur"""
-        try:
-            # Encodage de l'entrée utilisateur
-            input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, 
-                                            return_tensors='pt')
-            
-            # Génération de la réponse
-            output = self.model.generate(
-                input_ids,
-                max_length=1000,
-                pad_token_id=self.tokenizer.eos_token_id,
-                no_repeat_ngram_size=3,
-                do_sample=True,
-                top_k=100,
-                top_p=0.7,
-                temperature=0.8
-            )
-            
-            # Décodage de la réponse
-            response = self.tokenizer.decode(output[:, input_ids.shape[-1]:][0], 
-                                           skip_special_tokens=True)
-            
-            return response if response else "Je ne comprends pas votre demande."
-            
-        except Exception as e:
-            print(f"❌ Erreur lors de la génération de la réponse: {str(e)}")
-            return "Désolé, une erreur s'est produite. Veuillez réessayer."
-
-
-if __name__ == "__main__":
-    # Test simple du chatbot
-    chatbot = Chatbot()
-    print("🤖 Chatbot initialisé ! Tapez 'quit' pour quitter.")
+    Cette classe centralise l'utilisation des modèles de classification et de résumé,
+    gère le prétraitement des données et fournit une interface unifiée pour les prédictions.
+    """
     
-    while True:
-        user_input = input("Vous : ")
-        if user_input.lower() in ["quit", "exit", "bye"]:
-            print("Chatbot : Au revoir !")
-            break
-            
-        response = chatbot.generate_response(user_input)
-        print("Chatbot :", response)
+    def __init__(self, data_path="app\data\enriched_dataset_paragraphs_2.csv"):
+        """
+        Initialise l'orchestrateur avec les modèles et les données.
+        
+        Args:
+            data_path (str): Chemin vers le fichier de données CSV
+        """
+        self.loader = DataLoader(data_path)
+        self.preprocessor = TextPreprocessor()
+        self.ml_classifier = MLModel()
+        self.dl_classifier = DLModel()
+        self.autoencoder = AutoencoderSummarizer()
+        self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        self.initialized = False
+
+    def initialize(self):
+        """
+        Initialise les modèles en chargeant et prétraitant les données.
+        Ne réentraîne pas si les modèles sont déjà chargés depuis le disque.
+        """
+        if self.initialized:
+            return
+
+        # Si les modèles sont déjà chargés, on ne réentraîne pas
+        if self.ml_classifier.model is not None and self.dl_classifier.model is not None:
+            self.initialized = True
+            return
+
+        print("🔄 Chargement des données...")
+        texts, labels = self.loader.get_texts_and_labels()
+        
+        print("🔄 Prétraitement des textes...")
+        clean_texts = self.preprocessor.transform(texts)
+        
+        print("🔄 Division des données...")
+        X_train, X_test, y_train, y_test = self.loader.split_data(clean_texts, labels)
+        
+        print("🔄 Entraînement du modèle ML...")
+        self.ml_classifier.train(X_train, y_train)
+        
+        print("🔄 Préparation des données pour le modèle DL...")
+        X_dl, y_dl = self.dl_classifier.prepare(clean_texts, labels)
+        
+        print("🔄 Entraînement du modèle DL...")
+        history, X_test_dl, y_test_dl = self.dl_classifier.train(X_dl, y_dl)
+        
+        print("✅ Initialisation terminée !")
+        self.initialized = True
+
+    def process_text(self, text, task="classification", model_type="ml"):
+        """
+        Traite un texte selon la tâche et le type de modèle spécifiés.
+        """
+        print("Initialisation")
+        try:
+            if not self.initialized:
+                self.initialize()
+            # Prétraitement du texte
+            clean_text = self.preprocessor.clean(text)
+            normalized_text = normalize_text(clean_text)
+            result = {
+                "original_text": text,
+                "cleaned_text": clean_text,
+                "normalized_text": normalized_text
+            }
+            if task == "classification":
+                if model_type == "ml":
+                    print('Initialisation - Classification - Machine Learning')
+                    prediction = self.ml_classifier.predict([normalized_text])[0]
+                    probabilities = self.ml_classifier.predict_proba([normalized_text])[0]
+                    result.update({
+                        "task": "classification",
+                        "model": "ml",
+                        "prediction": prediction,
+                        "confidence": float(max(probabilities)),
+                        "probabilities": probabilities.tolist()
+                    })
+                else:
+                    print('Initialisation - Classification - Deep Learning')
+                    prediction = self.dl_classifier.predict([normalized_text])[0]
+                    probabilities = self.dl_classifier.predict_proba([normalized_text])[0]
+                    result.update({
+                        "task": "classification",
+                        "model": "dl",
+                        "prediction": prediction,
+                        "confidence": float(max(probabilities)),
+                        "probabilities": probabilities.tolist()
+                    })
+            elif task == "summarization":
+                if model_type == "ml":                    
+                    print('Initialisation - Résumé - Machine Learning')
+                    from sklearn.feature_extraction.text import TfidfVectorizer
+                    from nltk.tokenize import sent_tokenize
+                    sentences = sent_tokenize(text)
+                    vectorizer = TfidfVectorizer(stop_words='english')
+                    tfidf_matrix = vectorizer.fit_transform(sentences)
+                    sentence_scores = np.sum(tfidf_matrix.toarray(), axis=1)
+                    num_sentences = min(3, len(sentences))
+                    top_indices = sentence_scores.argsort()[-num_sentences:][::-1]
+                    top_indices.sort()
+                    summary = " ".join([sentences[i] for i in top_indices])
+                    important_words = []
+                    if self.ml_classifier.vectorizer is not None:
+                        clean_text = self.preprocessor.clean(text)
+                        X = self.ml_classifier.vectorizer.transform([clean_text])
+                        feature_names = self.ml_classifier.vectorizer.get_feature_names_out()
+                        scores = X.toarray()[0]
+                        top_indices_words = scores.argsort()[-5:][::-1]
+                        important_words = [feature_names[i] for i in top_indices_words if scores[i] > 0]
+                    result.update({
+                        "task": "summarization",
+                        "model": "ml",
+                        "summary": summary,
+                        "important_words": important_words
+                    })
+                else:
+                    print('Initialisation - Classification - Deep Learning')
+                    summary = self.summarizer(normalized_text, 
+                                            max_length=130, 
+                                            min_length=30, 
+                                            do_sample=False)[0]['summary_text']
+                    result.update({
+                        "task": "summarization",
+                        "model": "dl",
+                        "summary": summary
+                    })
+            print("Terminé")
+            return result
+        except Exception as e:
+            return {"error": f"Erreur lors du traitement : {e}"}
+
+    def classify(self, text, model_type='ml'):
+        """
+        Classification d'un texte avec le modèle ML ou DL.
+        Retourne une chaîne formatée pour l'interface.
+        """
+        result = self.process_text(text, task='classification', model_type=model_type)
+        label = result.get('prediction', 'N/A')
+        confidence = result.get('confidence', 0)
+        return f"Prédiction : {label}\nConfiance : {confidence:.2f}"
+
+    def summarize(self, text, model_type='ml'):
+        """
+        Résumé d'un texte avec le modèle ML ou DL.
+        Retourne une chaîne formatée pour l'interface.
+        """
+        result = self.process_text(text, task='summarization', model_type=model_type)
+        summary = result.get('summary', '')
+        if model_type == 'ml' and result.get('important_words'):
+            mots = result['important_words']
+            mots_str = ', '.join(mots)
+            return f"Résumé : {summary}\n\nMots-clés importants : {mots_str}"
+        return summary

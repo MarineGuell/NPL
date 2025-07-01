@@ -1,124 +1,167 @@
-### nettoyage de texte
-def cleaning(sentence):
+"""
+Module d'utilitaires pour le prétraitement et le chargement des données.
+"""
 
-    # Basic cleaning
-    sentence = sentence.strip()
-    sentence = sentence.lower()
-    sentence = ''.join(char for char in sentence if not char.isdigit())
-###
-    # retirer la premiere adresse mail , puis toutes les autres
-    sentence = re.sub(r'From:.*?Subject:', '', sentence, flags=re.DOTALL)
-    sentence = re.sub(r'\S+@\S+', '', sentence)
-
-    # Remove words with 3+ consecutive repeating letters
-    sentence = re.sub(r'\b\w*(\w)\1{2,}\w*\b', '', sentence)
-
-    # Remove URLs
-    sentence = re.sub(r'http\S+|www\S+|https\S+', '', sentence, flags=re.MULTILINE)
-###
-    # Advanced cleaning
-    for punctuation in string.punctuation:
-        sentence = sentence.replace(punctuation, '')
-
-    tokenized_sentence = word_tokenize(sentence)
-    tokenized_sentence_cleaned = [
-        w for w in tokenized_sentence if not w in set(stopwords.words('english'))
-    ]
-
-    lemmatized = [
-        WordNetLemmatizer().lemmatize(word, pos = "v")
-        for word in tokenized_sentence_cleaned
-    ]
-
-    cleaned_sentence = ' '.join(word for word in lemmatized)
-
-    return cleaned_sentence
-
-
-## Fonction de résumé simple (baseline)
-
-from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+import re
+import string
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from sklearn.model_selection import train_test_split
 import numpy as np
-import nltk
-from nltk.tokenize import sent_tokenize
 
-nltk.download('punkt')
-
-def summarize_text(text, num_sentences=2):
-    # 1. Découper le texte en phrases
-    sentences = sent_tokenize(text)
-    
-    # 2. Appliquer TF-IDF sur les phrases
-    vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(sentences)
-
-    # 3. Calculer un score pour chaque phrase
-    scores = np.sum(X.toarray(), axis=1)
-
-    # 4. Sélectionner les phrases les plus importantes
-    top_indices = scores.argsort()[-num_sentences:][::-1]
-
-    # 5. Trier les phrases selon leur ordre d'origine
-    top_indices.sort()
-    summary = [sentences[i] for i in top_indices]
-
-    return " ".join(summary)
-
-## Fonction de recherche sur Wikipédia
-import wikipedia
-from transformers import pipeline
-import nltk
-from nltk.tokenize import sent_tokenize
-
-# Téléchargement des ressources NLTK nécessaires
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-def summarize_text(text: str, max_length: int = 150) -> str:
+class DataLoader:
     """
-    Résume un texte en utilisant un modèle de résumé automatique
+    Classe pour charger et préparer les données.
     """
-    try:
-        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
-        return summary[0]['summary_text']
-    except Exception as e:
-        print(f"Erreur lors du résumé du texte: {str(e)}")
+    def __init__(self, filepath):
+        """
+        Initialise le chargeur de données.
+        
+        entrées:
+            filepath (str): Chemin vers le fichier CSV
+        """
+        self.data = pd.read_csv(filepath)
+        self.clean_data()
+
+    def clean_data(self):
+        """
+        Nettoie les données en supprimant les doublons et les valeurs manquantes.
+        """
+        # Suppression des doublons
+        self.data = self.data.drop_duplicates()
+        
+        # Suppression des lignes avec valeurs manquantes
+        self.data = self.data.dropna()
+        
+        # Réinitialisation de l'index
+        self.data = self.data.reset_index(drop=True)
+
+    def get_texts_and_labels(self):
+        """
+        Retourne les textes et les labels.
+        
+        sorties:
+            tuple: (texts, labels)
+        """
+        return self.data['text'], self.data['category']
+
+    def split_data(self, texts, labels, test_size=0.2, random_state=42):
+        """
+        Divise les données en ensembles d'entraînement et de test.
+        
+        entrées:
+            texts: Les textes
+            labels: Les labels
+            test_size (float): Proportion des données de test
+            random_state (int): Seed pour la reproductibilité
+            
+        sorties:
+            tuple: (X_train, X_test, y_train, y_test)
+        """
+        return train_test_split(texts, labels, test_size=test_size, random_state=random_state)
+
+class TextPreprocessor:
+    """
+    Classe pour le prétraitement des textes.
+    """
+    def __init__(self):
+        """
+        Initialise le prétraiteur de texte.
+        Télécharge les ressources NLTK nécessaires.
+        """
+        nltk.download('stopwords')
+        nltk.download('wordnet')
+        nltk.download('punkt')
+        self.stop_words = set(stopwords.words('english'))
+        self.lemmatizer = WordNetLemmatizer()
+
+    def clean(self, text):
+        """
+        Nettoie un texte de manière approfondie.
+        
+        entrées:
+            text (str): Le texte à nettoyer
+            
+        sorties:
+            str: Le texte nettoyé
+        """
+        # Basic cleaning
+        text = text.strip()
+        text = text.lower()
+        text = ''.join(char for char in text if not char.isdigit())
+
+        # Nettoyage des emails
+        text = re.sub(r'From:.*?Subject:', '', text, flags=re.DOTALL)
+        text = re.sub(r'\S+@\S+', '', text)
+
+        # Suppression des mots avec 3+ lettres consécutives identiques
+        text = re.sub(r'\b\w*(\w)\1{2,}\w*\b', '', text)
+
+        # Suppression des URLs
+        text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
+
+        # Suppression de la ponctuation
+        for punctuation in string.punctuation:
+            text = text.replace(punctuation, '')
+
+        # Tokenization et suppression des mots vides
+        tokenized_text = word_tokenize(text)
+        tokenized_text_cleaned = [
+            w for w in tokenized_text if not w in self.stop_words
+        ]
+
+        # Lemmatization
+        lemmatized = [
+            self.lemmatizer.lemmatize(word, pos="v")
+            for word in tokenized_text_cleaned
+        ]
+
+        # Reconstruction du texte
+        cleaned_text = ' '.join(word for word in lemmatized)
+
+        return cleaned_text
+
+    def suppr_espaces(self, text):
+        """
+        Normalise un texte.
+        
+        entrées:
+            text (str): Le texte à normaliser
+            
+        sorties:
+            str: Le texte normalisé
+        """
+        # Suppression des espaces multiples
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Suppression des espaces en début et fin
+        text = text.strip()
+        
         return text
 
-def search_wikipedia(query: str, sentences: int = 2) -> str:
-    """
-    Recherche des informations sur Wikipedia
-    """
-    try:
-        # Recherche de la page Wikipedia
-        search_results = wikipedia.search(query, results=1)
-        if not search_results:
-            return "Désolé, je n'ai pas trouvé d'informations sur ce sujet."
+    def transform(self, texts):
+        """
+        applique clean et normalization à une liste de textes.
+        """
+        # Nettoyage
+        cleaned_texts = texts.apply(self.clean)
         
-        # Récupération du contenu
-        page = wikipedia.page(search_results[0])
-        content = page.content
+        # Normalisation
+        normalized_texts = cleaned_texts.apply(self.suppr_espaces)
         
-        # Tokenization en phrases
-        sentences_list = sent_tokenize(content)
-        
-        # Retourne les premières phrases
-        return " ".join(sentences_list[:sentences])
-    except Exception as e:
-        print(f"Erreur lors de la recherche Wikipedia: {str(e)}")
-        return "Désolé, une erreur s'est produite lors de la recherche."
+        return normalized_texts
 
-def preprocess_text(text: str) -> str:
+def normalize_text(text):
     """
-    Prétraite le texte en le nettoyant
+    Normalise un texte
     """
-    # Conversion en minuscules
-    text = text.lower()
+    # Suppression des espaces multiples
+    text = re.sub(r'\s+', ' ', text)
     
-    # Suppression des caractères spéciaux
-    text = ''.join(char for char in text if char.isalnum() or char.isspace())
+    # Suppression des espaces en début et fin
+    text = text.strip()
     
-    return text.strip()
+    return text

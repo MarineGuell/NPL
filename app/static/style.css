@@ -1,0 +1,102 @@
+/* Thème sombre global */
+.stApp {
+    background-color: #1E1E1E;
+    color: #FFFFFF;
+}
+
+/* Style pour la sidebar */
+[data-testid="stSidebar"] {
+    background-color: #2D2D2D;
+    color: #FFFFFF;
+}
+
+[data-testid="stSidebar"] .stRadio > div {
+    color: #FFFFFF;
+}
+
+[data-testid="stSidebar"] .stCheckbox > div {
+    color: #FFFFFF;
+}
+
+[data-testid="stSidebar"] .stSelectbox > div {
+    color: #FFFFFF;
+}
+
+/* Style pour les messages de chat */
+.stChatMessage {
+    background-color: #2D2D2D;
+    border-radius: 10px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+}
+
+/* Style pour les messages de l'utilisateur */
+.stChatMessage[data-testid="stChatMessage"] {
+    background-color: #3D3D3D;
+}
+
+/* Style pour les messages du bot */
+.stChatMessage[data-testid="stChatMessage"] [data-testid="chatAvatarIcon"] {
+    background-color: #4CAF50;
+}
+
+/* Style pour le texte */
+.stMarkdown {
+    color: #FFFFFF;
+}
+
+/* Style pour les titres */
+h1, h2, h3 {
+    color: #FFFFFF;
+}
+
+/* Style pour la zone de saisie */
+.stTextInput>div>div>input {
+    background-color: #3D3D3D;
+    color: #FFFFFF;
+    border: 1px solid #4CAF50;
+}
+
+/* Style pour les boutons */
+.stButton>button {
+    background-color: #4c6a4d;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 5px;
+    padding: 0.5rem 1rem;
+}
+
+.stButton>button:hover {
+    background-color: #60a162;
+    color: #FFFFFF;
+}
+
+/* Style pour les spinners */
+.stSpinner {
+    color: #4CAF50;
+}
+
+/* Style pour les alertes */
+.stAlert {
+    background-color: #3D3D3D;
+    color: #FFFFFF;
+}
+
+/* Ajustement de la marge pour le contenu principal */
+.main .block-container {
+    padding-top: 1rem;
+    max-width: 100%;
+}
+
+/* Style pour l'avatar du bot */
+.bot-avatar {
+    background-color: #4CAF50;
+    color: #FFFFFF;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+} 

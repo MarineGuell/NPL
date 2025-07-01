@@ -1,0 +1,4 @@
+Paramètre,Valeur
+classifier__alpha,0.1
+tfidf__max_features,5000
+tfidf__ngram_range,"(1, 2)"
