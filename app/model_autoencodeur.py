@@ -41,10 +41,12 @@ class AutoencoderSummarizer:
     
     def __init__(self, max_words=5000, embedding_dim=128, max_sentence_length=50):
         """
-        Initialise le modèle d'autoencodeur pour le résumé.
-        - max_words : taille du vocabulaire pour la tokenisation.
-        - embedding_dim : dimension des embeddings de mots.
-        - max_sentence_length : longueur maximale des phrases (padding/troncature).
+        Initialise l'autoencodeur.
+        
+        Args:
+            max_words (int): Taille maximale du vocabulaire
+            embedding_dim (int): Dimension des embeddings
+            max_sentence_length (int): Longueur maximale des phrases
         """
         self.max_words = max_words
         self.embedding_dim = embedding_dim
@@ -68,51 +70,59 @@ class AutoencoderSummarizer:
             - sentence_vectors : matrice (nb_phrases, max_sentence_length)
             - original_sentences : phrases originales (pour le résumé final)
         """
-
+        from nltk.tokenize import sent_tokenize
         
         # Découpage en phrases
         sentences = sent_tokenize(text)
         
-        # Utilise le tokenizer partagé
-        sequences = self.tokenizer.texts_to_sequences(sentences)
+        # Filtrage des phrases trop courtes ou trop longues
+        filtered_sentences = []
+        for sentence in sentences:
+            if 5 <= len(sentence.split()) <= self.max_sentence_length:
+                filtered_sentences.append(sentence)
+        
+        if len(filtered_sentences) == 0:
+            return [], []
+        
+        # Vectorisation des phrases
+        sequences = self.tokenizer.texts_to_sequences(filtered_sentences)
         sentence_vectors = pad_sequences(sequences, maxlen=self.max_sentence_length)
-        return sentence_vectors, sentences
+        
+        return sentence_vectors, filtered_sentences
 
     def build_autoencoder(self):
         """
-        Construit l'architecture séquentielle de l'autoencodeur :
-        - Embedding : transforme les indices de mots en vecteurs denses.
-        - LSTM (encodeur) : encode la séquence en un vecteur latent.
-        - Dense : compression supplémentaire.
-        - RepeatVector : répète le vecteur latent pour chaque pas de temps.
-        - LSTM (decodeur) : reconstruit la séquence.
-        - TimeDistributed(Dense) : prédit un mot à chaque position.
+        Construit l'architecture de l'autoencodeur.
         """
-        from tensorflow.keras.layers import RepeatVector, TimeDistributed
         self.model = Sequential([
+            # Encoder
             Embedding(self.max_words, self.embedding_dim, input_length=self.max_sentence_length),
-            LSTM(64, return_sequences=False),
-            Dense(32, activation='relu'),
-            Dense(64, activation='relu'),
+            LSTM(64, return_sequences=True),
+            LSTM(32),
+            Dense(16, activation='relu'),
+            
+            # Decoder
             RepeatVector(self.max_sentence_length),
-            LSTM(self.embedding_dim, return_sequences=True),
+            LSTM(32, return_sequences=True),
+            LSTM(64, return_sequences=True),
             TimeDistributed(Dense(self.max_words, activation='softmax'))
         ])
+        
         self.model.compile(
             loss='sparse_categorical_crossentropy',
-            optimizer='adam',
+            optimizer='adam',#
             metrics=['accuracy']
         )
-        self.encoder = Sequential(self.model.layers[:3])
-        self.decoder = Sequential(self.model.layers[3:])
+        
+        print("✅ Architecture autoencodeur construite")
 
     def train(self, texts, epochs=15, batch_size=32):
         """
-        Entraîne l'autoencodeur sur toutes les phrases du dataset avec early stopping.
-        - Découpe chaque texte en phrases, vectorise.
-        - Concatène toutes les phrases pour former le jeu d'entraînement.
-        - Entraîne l'autoencodeur à reconstruire chaque phrase.
-        - Sauvegarde le modèle entraîné.
+        Entraîne l'autoencodeur
+        - Découpe chaque texte en phrases, vectorise
+        - Concatène toutes les phrases pour former le jeu d'entraînement
+        - Entraîne l'autoencodeur à reconstruire chaque phrase
+        - Sauvegarde
         """
         print("🔄 Préparation des données pour l'autoencodeur...")
         
@@ -133,6 +143,7 @@ class AutoencoderSummarizer:
                 print("❌ Aucune phrase trouvée pour entraîner le tokenizer")
                 return
         
+        #preprocess
         all_sentences = []
         all_sentence_vectors = []
         for text in texts:
@@ -147,6 +158,7 @@ class AutoencoderSummarizer:
             print(f"   Textes analysés: {len(texts)}")
             return
         
+        #train
         X_train = np.array(all_sentence_vectors)
         print(f"Nombre total de phrases pour l'entraînement : {X_train.shape[0]}")
         print(f"Forme des données d'entraînement : {X_train.shape}")
@@ -167,7 +179,7 @@ class AutoencoderSummarizer:
             patience=3,
             min_lr=1e-7,
             verbose=1
-        )
+        )# callback
         
         self.history = self.model.fit(
             X_train, X_train,
@@ -180,12 +192,11 @@ class AutoencoderSummarizer:
         self.model.save(self.MODEL_PATH)
         print(f"✅ Autoencodeur sauvegardé dans {self.MODEL_PATH}")
         
-        # Génération automatique des performances
-        self._generate_performance_metrics()
+        self._generate_performance_metrics()#  performances
 
     def _generate_performance_metrics(self):
         """
-        Génère automatiquement les métriques de performance et les sauvegarde.
+        Génère les métriques de performance et les sauvegarde.
         """
         if self.history is None:
             print("⚠️ Pas d'historique d'entraînement pour générer les métriques")
@@ -194,13 +205,13 @@ class AutoencoderSummarizer:
         # Création du dossier performances
         os.makedirs('app/performances', exist_ok=True)
         
-        # 1. Métriques finales
+        # Métriques finales
         final_loss = self.history.history['loss'][-1]
         final_val_loss = self.history.history['val_loss'][-1]
         final_accuracy = self.history.history['accuracy'][-1]
         final_val_accuracy = self.history.history['val_accuracy'][-1]
         
-        # 2. Sauvegarde des métriques en CSV
+        # Sauvegarde des métriques en CSV
         metrics_df = pd.DataFrame({
             'Métrique': ['Loss finale (entraînement)', 'Loss finale (validation)', 
                         'Accuracy finale (entraînement)', 'Accuracy finale (validation)'],
@@ -208,11 +219,11 @@ class AutoencoderSummarizer:
         })
         metrics_df.to_csv('app/performances/autoencoder_metrics.csv', index=False)
         
-        # 3. Sauvegarde de l'historique d'entraînement
+        # Sauvegarde de l'historique d'entraînement
         history_df = pd.DataFrame(self.history.history)
         history_df.to_csv('app/performances/autoencoder_training_history.csv', index=False)
         
-        # 4. Courbes d'apprentissage
+        # Courbes d'apprentissage
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
         
         # Loss
@@ -235,19 +246,6 @@ class AutoencoderSummarizer:
         
         plt.tight_layout()
         plt.savefig('app/performances/autoencoder_learning_curves.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # 5. Architecture de l'autoencodeur
-        plt.figure(figsize=(12, 8))
-        plt.text(0.5, 0.9, 'Architecture de l\'Autoencodeur', fontsize=16, fontweight='bold', ha='center')
-        plt.text(0.5, 0.8, 'Embedding → LSTM → Dense → RepeatVector → LSTM → TimeDistributed', 
-                fontsize=12, ha='center')
-        plt.text(0.5, 0.7, f'Vocabulaire: {self.max_words} mots', fontsize=10, ha='center')
-        plt.text(0.5, 0.6, f'Embedding dim: {self.embedding_dim}', fontsize=10, ha='center')
-        plt.text(0.5, 0.5, f'Longueur max phrase: {self.max_sentence_length}', fontsize=10, ha='center')
-        plt.axis('off')
-        plt.tight_layout()
-        plt.savefig('app/performances/autoencoder_architecture.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         print("✅ Métriques Autoencodeur générées dans app/performances/")
@@ -294,12 +292,13 @@ class AutoencoderSummarizer:
         if len(sentence_vectors) == 0:
             return "*splashes water* 🐸 This text is too short to summarize, kero!"
         reconstruction_errors = []
+        
         for i, sentence_vector in enumerate(sentence_vectors):
             reconstructed = self.model.predict(sentence_vector.reshape(1, -1), verbose=0)
-            original_sequence = sentence_vector
-            reconstructed_sequence = reconstructed[0].argmax(axis=-1)
-            error = np.mean(np.abs(original_sequence - reconstructed_sequence))
-            reconstruction_errors.append((i, error))
+            original_sequence = sentence_vector 
+            reconstructed_sequence = reconstructed[0].argmax(axis=-1) 
+            error = np.mean(np.abs(original_sequence - reconstructed_sequence)) 
+            reconstruction_errors.append((i, error)) 
         reconstruction_errors.sort(key=lambda x: x[1])
         selected_indices = [idx for idx, _ in reconstruction_errors[:num_sentences]]
         selected_indices.sort()

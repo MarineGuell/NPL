@@ -4,10 +4,10 @@
 # ============================================================================
 
 Classification par Machine Learning
-   - TF-IDF + Naive Bayes avec optimisation GridSearchCV.
-   - Sauvegarde automatique du vectorizer dans app/models/
-   - Évaluation complète (matrice confusion, courbe apprentissage)
-   - Prétraitement : nettoyage complet (ponctuation, URLs, stopwords, lemmatisation)
+   - TF-IDF + Naive Bayes
+   - Sauvegarde du vectorizer dans app/models/
+   - Évaluation (matrice confusion, courbe apprentissage)
+   - Prétraitement : nettoyage (ponctuation, URLs, stopwords, lemmatisation)
    
 """
 
@@ -20,7 +20,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, precision_recall_fscore_support
 
 class MLModel:
@@ -32,6 +32,7 @@ class MLModel:
     """
     MODEL_PATH = "app/models/ml_model.joblib"
     VECTORIZER_PATH = "app/models/vectorizer.joblib"
+    CLASSES_PATH = "app/models/ml_classes.npy"
     
     def __init__(self):
         """
@@ -39,16 +40,19 @@ class MLModel:
         """
         self.model = None
         self.vectorizer = None
+        self.best_params = None
+        self.cv_results = None
         self.X_test = None
         self.y_test = None
         self.y_pred = None
-        self.best_params = None
-        self.cv_results = None
         
         # Chargement automatique si le modèle existe déjà
         if os.path.exists(self.MODEL_PATH):
             self.model = joblib.load(self.MODEL_PATH)
             print(f"✅ Modèle ML chargé depuis {self.MODEL_PATH}")
+            # Charger le mapping des classes si possible
+            if os.path.exists(self.CLASSES_PATH):
+                print(f"✅ Mapping des labels ML chargé depuis {self.CLASSES_PATH}")
             
         if os.path.exists(self.VECTORIZER_PATH):
             self.vectorizer = joblib.load(self.VECTORIZER_PATH)
@@ -56,15 +60,16 @@ class MLModel:
 
     def train(self, texts, labels):
         """
-        Entraîne le modèle ML, hypermaram gridsearch
+        Entraîne le modèle ML avec optimisation GridSearchCV.
         
         Args:
             texts: Les textes d'entraînement
             labels: Les labels correspondants
         """
         # Division train/test
+        from sklearn.model_selection import train_test_split
         X_train, self.X_test, y_train, self.y_test = train_test_split(
-            texts, labels, test_size=0.2, random_state=42, stratify=labels
+            texts, labels, test_size=0.2, random_state=42
         )
         
         # Pipeline TF-IDF + Naive Bayes
@@ -73,12 +78,14 @@ class MLModel:
             ('classifier', MultinomialNB())
         ])
         
-        # GridSearchCV
+        # Grille de paramètres pour optimisation
         param_grid = {
             'tfidf__max_features': [3000, 5000],
             'tfidf__ngram_range': [(1, 1), (1, 2)],
             'classifier__alpha': [0.1, 1.0, 10.0]
         }
+        
+        # GridSearchCV pour optimisation
         grid_search = GridSearchCV(
             pipeline, param_grid, cv=5, scoring='accuracy', n_jobs=-1
         )
@@ -102,8 +109,9 @@ class MLModel:
         # Sauvegarde
         joblib.dump(self.model, self.MODEL_PATH)
         joblib.dump(self.vectorizer, self.VECTORIZER_PATH)
-        print(f"Modèle ML sauvegardé dans {self.MODEL_PATH}")
-        print(f"Vectorizer sauvegardé dans {self.VECTORIZER_PATH}")
+        # Sauvegarde du mapping des labels
+        np.save(self.CLASSES_PATH, self.model.classes_)
+        print(f"Mapping des labels ML sauvegardé dans {self.CLASSES_PATH}")
         
         # Génération automatique des performances
         self._generate_performance_metrics()
@@ -227,23 +235,13 @@ class MLModel:
     def predict_proba(self, texts):
         """
         Prédit les probabilités pour chaque classe.
-        
-        Args:
-            texts: Liste de textes à classifier
-            
-        Returns:
-            array: Matrice de probabilités (n_samples, n_classes)
         """
         if self.model is None:
             raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
-        
-        # Vectorisation des textes
-        X = self.vectorizer.transform(texts)
-        
-        # Prédiction des probabilités
-        probabilities = self.model.predict_proba(X)
-        
-        return probabilities
+        if not hasattr(self.model, 'predict_proba'):
+            raise ValueError("Le modèle ne supporte pas predict_proba.")
+        # Passe directement les textes bruts au pipeline
+        return self.model.predict_proba(texts)
 
     def evaluate(self):
         """

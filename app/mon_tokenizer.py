@@ -15,7 +15,7 @@ class SharedTokenizer:
     - L'autoencodeur (AutoencoderSummarizer)
     """
     
-    def __init__(self, max_words=5000, max_len=200):
+    def __init__(self, max_words=5000, max_len=200): # TODO d'autres taille ?
         """
         Initialise le tokenizer partagé.
         
@@ -37,8 +37,8 @@ class SharedTokenizer:
         """
         self.tokenizer.fit_on_texts(texts)
         self.is_fitted = True
-        print(f"✅ Tokenizer entraîné sur {len(texts)} textes")
-        print(f"   Vocabulaire: {len(self.tokenizer.word_index)} mots")
+        print(f"Tokenizer entraîné sur {len(texts)} textes")
+        print(f"Vocabulaire: {len(self.tokenizer.word_index)} mots")
         
     def texts_to_sequences(self, texts):
         """
@@ -53,3 +53,14 @@ class SharedTokenizer:
         if not self.is_fitted:
             raise RuntimeError("Le tokenizer n'est pas encore entraîné!")
         return self.tokenizer.texts_to_sequences(texts)
+
+    def save_tokenizer(self, path):
+        with open(path, 'wb') as f:
+            pickle.dump(self.tokenizer, f)
+        print(f"✅ Tokenizer sauvegardé dans {path}")
+
+    def load_tokenizer(self, path):
+        with open(path, 'rb') as f:
+            self.tokenizer = pickle.load(f)
+        self.is_fitted = True
+        print(f"✅ Tokenizer chargé depuis {path}")
