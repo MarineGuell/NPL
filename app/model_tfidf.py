@@ -20,7 +20,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, precision_recall_fscore_support
 
 class MLModel:
@@ -39,11 +39,11 @@ class MLModel:
         """
         self.model = None
         self.vectorizer = None
-        self.best_params = None
-        self.cv_results = None
         self.X_test = None
         self.y_test = None
         self.y_pred = None
+        self.best_params = None
+        self.cv_results = None
         
         # Chargement automatique si le modèle existe déjà
         if os.path.exists(self.MODEL_PATH):
@@ -56,16 +56,15 @@ class MLModel:
 
     def train(self, texts, labels):
         """
-        Entraîne le modèle ML avec optimisation GridSearchCV.
+        Entraîne le modèle ML, hypermaram gridsearch
         
         Args:
             texts: Les textes d'entraînement
             labels: Les labels correspondants
         """
         # Division train/test
-        from sklearn.model_selection import train_test_split
         X_train, self.X_test, y_train, self.y_test = train_test_split(
-            texts, labels, test_size=0.2, random_state=42
+            texts, labels, test_size=0.2, random_state=42, stratify=labels
         )
         
         # Pipeline TF-IDF + Naive Bayes
@@ -74,14 +73,12 @@ class MLModel:
             ('classifier', MultinomialNB())
         ])
         
-        # Grille de paramètres pour optimisation
+        # GridSearchCV
         param_grid = {
             'tfidf__max_features': [3000, 5000],
             'tfidf__ngram_range': [(1, 1), (1, 2)],
             'classifier__alpha': [0.1, 1.0, 10.0]
         }
-        
-        # GridSearchCV pour optimisation
         grid_search = GridSearchCV(
             pipeline, param_grid, cv=5, scoring='accuracy', n_jobs=-1
         )

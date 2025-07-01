@@ -3,7 +3,7 @@
 # MODÈLE DeepLearning
 # ============================================================================
 
-Classification par Deep Learning  
+  Classification par Deep Learning  
    - Architecture LSTM bidirectionnel avec BatchNormalization et Dropout.
    - Sauvegarde automatique du tokenizer et encoder dans app/models/
    - Même prétraitement que ML + tokenization Keras
@@ -76,20 +76,14 @@ class DLModel:
         sorties:
             tuple: (X, y) préparés
         """
-        # Entraînement du tokenizer si nécessaire
+        # Vérification du tokenizer
         if not self.tokenizer.is_fitted:
+            print("⚠️ Tokenizer non fitted, entraînement automatique...")
             self.tokenizer.fit_on_texts(texts)
-        
-        # Conversion en séquences
         sequences = self.tokenizer.texts_to_sequences(texts)
         X = pad_sequences(sequences, maxlen=self.max_len)
-        
-        # Encodage des labels
-        y = to_categorical(self.encoder.fit_transform(labels))
-        
-        print(f"✅ Données DL préparées: {X.shape[0]} échantillons, {X.shape[1]} tokens")
-        print(f"   Classes: {len(self.encoder.classes_)}")
-        
+        y = self.encoder.fit_transform(labels)
+        y = to_categorical(y)
         return X, y
 
     def build_model(self, num_classes):
@@ -101,15 +95,12 @@ class DLModel:
         """
         self.model = Sequential([
             Embedding(self.max_words, 128, input_length=self.max_len),
-            Bidirectional(LSTM(64, return_sequences=True)),
+            Bidirectional(LSTM(64, dropout=0.2, return_sequences=True)),
             BatchNormalization(),
-            Dropout(0.3),
+            Dropout(0.5),
             Bidirectional(LSTM(32)),
-            BatchNormalization(),
-            Dropout(0.3),
             Dense(64, activation='relu'),
-            BatchNormalization(),
-            Dropout(0.3),
+            Dropout(0.5),
             Dense(num_classes, activation='softmax')
         ])
         

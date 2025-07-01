@@ -41,12 +41,10 @@ class AutoencoderSummarizer:
     
     def __init__(self, max_words=5000, embedding_dim=128, max_sentence_length=50):
         """
-        Initialise l'autoencodeur.
-        
-        Args:
-            max_words (int): Taille maximale du vocabulaire
-            embedding_dim (int): Dimension des embeddings
-            max_sentence_length (int): Longueur maximale des phrases
+        Initialise le modèle d'autoencodeur pour le résumé.
+        - max_words : taille du vocabulaire pour la tokenisation.
+        - embedding_dim : dimension des embeddings de mots.
+        - max_sentence_length : longueur maximale des phrases (padding/troncature).
         """
         self.max_words = max_words
         self.embedding_dim = embedding_dim
@@ -70,51 +68,43 @@ class AutoencoderSummarizer:
             - sentence_vectors : matrice (nb_phrases, max_sentence_length)
             - original_sentences : phrases originales (pour le résumé final)
         """
-        from nltk.tokenize import sent_tokenize
+
         
         # Découpage en phrases
         sentences = sent_tokenize(text)
         
-        # Filtrage des phrases trop courtes ou trop longues
-        filtered_sentences = []
-        for sentence in sentences:
-            if 5 <= len(sentence.split()) <= self.max_sentence_length:
-                filtered_sentences.append(sentence)
-        
-        if len(filtered_sentences) == 0:
-            return [], []
-        
-        # Vectorisation des phrases
-        sequences = self.tokenizer.texts_to_sequences(filtered_sentences)
+        # Utilise le tokenizer partagé
+        sequences = self.tokenizer.texts_to_sequences(sentences)
         sentence_vectors = pad_sequences(sequences, maxlen=self.max_sentence_length)
-        
-        return sentence_vectors, filtered_sentences
+        return sentence_vectors, sentences
 
     def build_autoencoder(self):
         """
-        Construit l'architecture de l'autoencodeur.
+        Construit l'architecture séquentielle de l'autoencodeur :
+        - Embedding : transforme les indices de mots en vecteurs denses.
+        - LSTM (encodeur) : encode la séquence en un vecteur latent.
+        - Dense : compression supplémentaire.
+        - RepeatVector : répète le vecteur latent pour chaque pas de temps.
+        - LSTM (decodeur) : reconstruit la séquence.
+        - TimeDistributed(Dense) : prédit un mot à chaque position.
         """
+        from tensorflow.keras.layers import RepeatVector, TimeDistributed
         self.model = Sequential([
-            # Encoder
             Embedding(self.max_words, self.embedding_dim, input_length=self.max_sentence_length),
-            LSTM(64, return_sequences=True),
-            LSTM(32),
-            Dense(16, activation='relu'),
-            
-            # Decoder
+            LSTM(64, return_sequences=False),
+            Dense(32, activation='relu'),
+            Dense(64, activation='relu'),
             RepeatVector(self.max_sentence_length),
-            LSTM(32, return_sequences=True),
-            LSTM(64, return_sequences=True),
+            LSTM(self.embedding_dim, return_sequences=True),
             TimeDistributed(Dense(self.max_words, activation='softmax'))
         ])
-        
         self.model.compile(
             loss='sparse_categorical_crossentropy',
             optimizer='adam',
             metrics=['accuracy']
         )
-        
-        print("✅ Architecture autoencodeur construite")
+        self.encoder = Sequential(self.model.layers[:3])
+        self.decoder = Sequential(self.model.layers[3:])
 
     def train(self, texts, epochs=15, batch_size=32):
         """
