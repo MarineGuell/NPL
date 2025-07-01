@@ -10,7 +10,6 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 import numpy as np
 
 class DataLoader:
@@ -125,7 +124,7 @@ class TextPreprocessor:
 
         return cleaned_text
 
-    def normalize(self, text):
+    def suppr_espaces(self, text):
         """
         Normalise un texte.
         
@@ -151,40 +150,9 @@ class TextPreprocessor:
         cleaned_texts = texts.apply(self.clean)
         
         # Normalisation
-        normalized_texts = cleaned_texts.apply(self.normalize)
+        normalized_texts = cleaned_texts.apply(self.suppr_espaces)
         
         return normalized_texts
-
-    def transform_for_autoencoder(self, texts):
-        """
-        Prétraite les textes pour l'autoencodeur :
-        - Minuscule, suppression emails/URLs, mais conserve la ponctuation.
-        - Pas de suppression de ponctuation ni de lemmatisation.
-        - Suppression des chiffres et espaces multiples.
-        """
-        def light_clean(text):
-            text = text.strip().lower()
-            text = re.sub(r'From:.*?Subject:', '', text, flags=re.DOTALL)
-            text = re.sub(r'\S+@\S+', '', text)
-            text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-            text = ''.join(char for char in text if not char.isdigit())
-            text = re.sub(r'\s+', ' ', text)
-            return text.strip()
-        return texts.apply(light_clean)
-
-def encode_labels(labels):
-    """
-    Encode les labels en utilisant LabelEncoder.
-    
-    entrées:
-        labels: Les labels à encoder
-        
-    sorties:
-        tuple: (encoded_labels, encoder)
-    """
-    encoder = LabelEncoder()
-    encoded_labels = encoder.fit_transform(labels)
-    return encoded_labels, encoder
 
 def normalize_text(text):
     """

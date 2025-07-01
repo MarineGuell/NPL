@@ -1,6 +1,5 @@
 # 🐸 Kaeru FrogBot
 
-
 ## Fonctionnalités Principales
 
 ### 1. Classification de Texte
@@ -52,7 +51,7 @@ NLP/
 ### Installation
 ```bash
 # Cloner le repository
-git clone [URL_DU_REPO]
+git clone https://github.com/MarineGuell/NPL.git
 cd NLP
 
 # Créer l'environnement virtuel
@@ -151,5 +150,7 @@ Dans le dossier performances/
 - `evaluation_report.txt` : Rapport d'évaluation complet
 
 ------------------------------------------------------------
+
 Ce projet a été développé dans le cadre du cours de Natural Language Processing enseigné par Nicolas Miotto, à l'école Ynov Toulouse
+
 ------------------------------------------------------------

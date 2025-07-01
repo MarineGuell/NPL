@@ -35,13 +35,7 @@ import streamlit as st
 from chatbot import TextProcessor
 from wikipedia_search import WikipediaIntelligentSearch
 import os
-
-# Fonction utilitaire pour lister les datasets disponibles
-def list_datasets():
-    data_dir = os.path.join(os.path.dirname(__file__), "data")
-    if not os.path.exists(data_dir):
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
-    return [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+import random
 
 # Configuration de la page Streamlit
 st.set_page_config(
@@ -83,11 +77,11 @@ def main():
     st.markdown(
         """
         <div style='margin-bottom: 1.5em; font-size: 1.1em;'>
-        Welcome !<br>
-        I am <b>Kaeru</b>, your frog assistant to navigate the mysterious pond of knowledge.<br>
-        I can help you understand the academic field of an unknown and intriguing text, kero ! 🐸<br>
-        If you don't have time to read all those words, I can also cut it short for you !<br>
-        Finally, I can dive deep into the pond of knowledge too fetch more information about a specific topic, kero ! 🐸<br>
+        Welcome!<br>
+        I am Kaeru, your frog assistant to navigate the mysterious pond of knowledge.<br>
+        I can help you understand the academic field of an unknown and intriguing text, kero! 🐸<br>
+        If you don't have time to read all those words, I can also cut it short for you!<br>
+        Finally, I can dive deep into the pond of knowledge to fetch more information about a specific topic, kero! 🐸<br>
         </div>
         """,
         unsafe_allow_html=True
@@ -110,9 +104,10 @@ def main():
     if "ambiguous_options" not in st.session_state:
         st.session_state.ambiguous_options = None
 
-    # === CONFIGURATION DE LA BARRE LATÉRALE ===
+    # === BARRE LATÉRALE ===
     with st.sidebar:
         task = st.radio(
+            # options
             "### What can I do for you, kero? 🐸",
             [
                 "Classification (Machine Learning)",
@@ -123,141 +118,18 @@ def main():
             ]
         )
         
+        # bouton clear cache
         st.markdown("---")
         st.markdown("### 🦟 Debug")
         if st.button('''🧠 Brain fog (Clear Cache) : \n\n"What where we saying again, kero ?"'''):
             clear_cache()
 
-##########################################################################
-     
-#     # === AFFICHAGE DES MOTS-CLÉS EXTRACTÉS (Wikipedia Search) ===
-#     if st.session_state.extracted_keywords and task == "Wikipedia Search":
-#         st.markdown("I understood those words :")
-#         keywords_display = []
-#         for keyword, score in st.session_state.extracted_keywords:
-#             keywords_display.append(f"**{keyword}** (confiance: {score:.2f})")
-#         st.markdown(" • ".join(keywords_display))
-#         # st.markdown("---")
     
-#     # === GESTION DES SUGGESTIONS WIKIPEDIA ===
-#     if st.session_state.wiki_suggestions and not st.session_state.ambiguous_options:
-#         st.markdown("So I should search about... ?")
-        
-#         # Affichage des suggestions avec scores de confiance
-#         for i, suggestion in enumerate(st.session_state.wiki_suggestions):
-#             confidence = suggestion['confidence']
-#             title = suggestion['title']
-#             keyword = suggestion['keyword']
-            
-#             # Bouton avec score de confiance
-#             if st.button(f"{title}", #  (via '{keyword}', confiance: {confidence})
-#                         key=f"wiki_suggestion_{i}"):
-#                 # Récupération du résumé de la page sélectionnée
-#                 try:
-#                     summary_result = wiki_search.get_page_summary(title, sentences=4)
-                    
-#                     if summary_result['status'] == 'success':
-#                         # Affichage du résumé avec autoencodeur si disponible
-#                         if 'autoencoder_summary' in summary_result:
-#                             response = f"""Here's what I found about **{title}**, kero! 🐸
+    # === AFFICHAGE DE L'HISTORIQUE GLOBAL DES MESSAGES ===
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar=message.get("avatar", "")):
+            st.markdown(message["content"])
 
-# {summary_result['summary']} Kero 🐸
-
-# **But if you want me to be short : **
-
-# {summary_result['autoencoder_summary']} Kero 🐸"""
-#                         else:
-#                             response = f"Here's what I found about **{title}**, kero! 🐸 \n\n{summary_result['summary']} Kero 🐸"
-                        
-#                         # Mise à jour de l'historique
-#                         st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})
-#                         st.session_state.wiki_suggestions = None
-#                         st.session_state.extracted_keywords = None
-#                         st.rerun()
-                        
-#                     elif summary_result['status'] == 'ambiguous':
-#                         # Page ambiguë - stocker les options pour affichage séparé
-#                         options = summary_result['options']
-#                         st.session_state.ambiguous_options = options
-#                         st.session_state.wiki_suggestions = None
-#                         st.rerun()
-#                     else:
-#                         st.error(summary_result['message'])
-                        
-#                 except Exception as e:
-#                     st.error(f"Error accessing Wikipedia: {str(e)}")
-        
-#         # Bouton d'annulation
-#         if st.button("❌ Cancel", key="cancel_wiki"):
-#             st.session_state.wiki_suggestions = None
-#             st.session_state.extracted_keywords = None
-#             st.session_state.ambiguous_options = None
-#             st.rerun()
-    
-#     # === GESTION DES OPTIONS AMBIGUËS WIKIPEDIA ===
-#     elif st.session_state.ambiguous_options:
-#         st.markdown("**Multiple pages found, which one do you want?**")
-        
-#         # Affichage des options avec boutons
-#         for j, option in enumerate(st.session_state.ambiguous_options):
-#             if st.button(f"📄 {option}", key=f"ambiguous_option_{j}"):
-#                 # Récupérer le résumé de l'option choisie
-#                 try:
-#                     option_summary = wiki_search.get_page_summary(option, sentences=4)
-#                     if option_summary['status'] == 'success':
-#                         # Affichage du résumé avec autoencodeur si disponible
-#                         if 'autoencoder_summary' in option_summary:
-#                             response = f"""Here's what I found about **{option}**, kero! 🐸
-
-# {option_summary['summary']} Kero 🐸
-
-# **But if you want me to be short : **
-
-# {option_summary['autoencoder_summary']} Kero 🐸"""
-#                         else:
-#                             response = f"Here's what I found about **{option}**, kero! 🐸 \n\n{option_summary['summary']} Kero 🐸"
-                        
-#                         # Mise à jour de l'historique
-#                         st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})
-#                         st.session_state.wiki_suggestions = None
-#                         st.session_state.extracted_keywords = None
-#                         st.session_state.ambiguous_options = None
-#                         st.rerun()
-#                     else:
-#                         st.error(option_summary['message'])
-#                 except Exception as e:
-#                     st.error(f"Error accessing Wikipedia: {str(e)}")
-        
-#         # Bouton d'annulation pour les options ambiguës
-#         if st.button("❌ Cancel", key="cancel_ambiguous"):
-#             st.session_state.wiki_suggestions = None
-#             st.session_state.extracted_keywords = None
-#             st.session_state.ambiguous_options = None
-#             st.rerun()
-    
-#     # === ZONE DE SAISIE SPÉCIFIQUE POUR WIKIPEDIA ===
-#     elif task == "Wikipedia Search":
-#         # Zone de saisie dédiée pour Wikipedia
-#         wiki_prompt = st.text_input("*What knowladge do you seek, kero ?🐸*", placeholder="Tell Kaeru...")
-        
-#         if wiki_prompt:
-#             with st.spinner("Searching Wikipedia, kero..."):
-#                 # === RECHERCHE WIKIPEDIA INTELLIGENTE ===
-#                 search_result = wiki_search.smart_search_by_combinations(wiki_prompt, max_suggestions=8)
-                
-#                 if search_result['status'] == 'success':
-#                     # Stockage des mots-clés extraits pour affichage
-#                     st.session_state.extracted_keywords = search_result['keywords']
-                    
-#                     # Stockage des suggestions pour affichage avec boutons
-#                     st.session_state.wiki_suggestions = search_result['suggestions']
-                    
-#                     # Pas besoin d'ajouter de message ici, les suggestions seront affichées
-#                     st.rerun()
-                    
-#                 else:  # error
-#                     st.error(search_result['message'])
-    
     # === ZONE DE SAISIE ET TRAITEMENT DES REQUÊTES ===
     if prompt := st.chat_input("Drop your text here, kero..."):
         # Ajout du message utilisateur à l'historique
@@ -270,40 +142,86 @@ def main():
             with st.spinner("Let me see, kero..."):
                 response = ""
                 
+                # classification Machine Learning
                 if task == "Classification (Machine Learning)":
-                    response = orchestrator.classify(prompt, model_type='ml')
-                    print('Tu en fais quoi ?')
+                    response_str = orchestrator.classify(prompt, model_type='ml')
+                    # Extraction du label et de la confiance
+                    try:
+                        label_line, conf_line = response_str.split('\n')
+                        label = label_line.split(':', 1)[1].strip()
+                        confidence = float(conf_line.split(':', 1)[1].strip())
+                        if confidence >= 0.8:
+                            response = f"I'm **{confidence*100:.0f}%** sure this is about **{label}**, kero! 🐸 *The frog puffs up its chest proudly.*"
+                        elif confidence >= 0.5:
+                            response = f"I think this is about **{label}** (confidence: {confidence*100:.0f}%), kero... *The frog tilts its head, a bit unsure.*"
+                        else:
+                            response = f"Hmm... I'm not sure, but maybe **{label}** ? (confidence: {confidence*100:.0f}%), kero... *The frog looks around, uncertain.*"
+                    except Exception:
+                        response = response_str
 
+                # Classification Deep Learning
                 elif task == "Classification (Deep Learning)":
-                    response = orchestrator.classify(prompt, model_type='dl')
-                    print('Tu en fais quoi ?')
+                    response_str = orchestrator.classify(prompt, model_type='dl')
+                    try:
+                        label_line, conf_line = response_str.split('\n')
+                        label = label_line.split(':', 1)[1].strip()
+                        confidence = float(conf_line.split(':', 1)[1].strip())
+                        if confidence >= 0.8:
+                            response = f"I'm **{confidence*100:.0f}%** sure this is about **{label}**, kero! 🐸 *The frog puffs up its chest proudly.*"
+                        elif confidence >= 0.5:
+                            response = f"I think this isabout **{label}** (confidence: {confidence*100:.0f}%), kero... *The frog tilts its head, a bit unsure.*"
+                        else:
+                            response = f"Hmm... I'm not sure, but maybe **{label}**? (confidence: {confidence*100:.0f}%), kero... *The frog looks around, uncertain.*"
+                    except Exception:
+                        response = response_str
 
+                # resumé Machine Learning
                 elif task == "Summarization (Machine Learning)":
-                    response = orchestrator.summarize(prompt, model_type='ml')
-                    print('Tu en fais quoi ?')
+                    response_str = orchestrator.summarize(prompt, model_type='ml')
+                    # Séparation résumé / mots-clés
+                    if "Mots-clés importants :" in response_str:
+                        summary_part, keywords_part = response_str.split("Mots-clés importants :", 1)
+                        summary = summary_part.replace("Résumé :", "").strip()
+                        keywords = keywords_part.strip()
+                    else:
+                        summary = response_str.strip()
+                        keywords = None
+                    intro_choices = [
+                        f"In short, this text says: {summary}, kero! 🐸",
+                        f"Here's the gist: {summary}, kero! 🐸",
+                        f"To summarize: {summary}, kero! 🐸"
+                    ]
+                    response = random.choice(intro_choices)
+                    if keywords:
+                        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+                        if kw_list:
+                            response += f"\n\nI got {len(kw_list)} big idea{'s' if len(kw_list)>1 else ''} from it: **{', '.join(kw_list)}**, kero!"
 
+                # resumé Deep Learning
                 elif task == "Summarization (Deep Learning)":
-                    response = orchestrator.summarize(prompt, model_type='dl')
-                    print('Tu en fais quoi ?')
-
-                    
+                    summary = orchestrator.summarize(prompt, model_type='dl')
+                    intro_choices = [
+                        f"In short, this text says: {summary}, kero! 🐸",
+                        f"Here's the gist: {summary}, kero! 🐸",
+                        f"To summarize: {summary}, kero! 🐸"
+                    ]
+                    response = random.choice(intro_choices)
+                
+                # Recherche Wikipedia     
                 elif task == "Wikipedia Search":
-                    # === RECHERCHE WIKIPEDIA INTELLIGENTE ===
-                    # Utilisation de la nouvelle fonction de recherche intelligente
-                    search_result = wiki_search.smart_search_by_combinations(prompt, max_suggestions=8)
-                    
+                    search_result = wiki_search.get_page_summary(prompt, sentences=4)
                     if search_result['status'] == 'success':
-                        # Stockage des mots-clés extraits pour affichage
-                        st.session_state.extracted_keywords = search_result['keywords']
-                        
-                        # Stockage des suggestions pour affichage avec boutons
-                        st.session_state.wiki_suggestions = search_result['suggestions']
-                        
-                        # Pas besoin d'ajouter de message ici, les suggestions seront affichées
-                        st.rerun()
-                        
-                    else:  # error
-                        response = search_result['message']
+                        # Vérifie si le titre retourné est différent de la requête utilisateur (non strictement égal, insensible à la casse et espaces)
+                        if search_result['title'].strip().lower() != prompt.strip().lower():
+                            response = f'''I'm not sure about '{prompt}', I couldn't find something about it specifically.\n\n 
+                            But here is what I can tell you about {search_result['title']}, kero :\n\n{search_result['summary']}'''
+                        else:
+                            response = f"Here's what I found about **{search_result['title']}**, kero! 🐸\n\n{search_result['summary']}"
+                    else:
+                        response = f"Sorry, I couldn't find a Wikipedia page for your query, kero! 🐸 Please try another word or phrase."
+
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response, "avatar": "🐸"})
 
 
 if __name__ == "__main__":

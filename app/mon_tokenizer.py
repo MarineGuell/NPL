@@ -1,76 +1,55 @@
+"""
+Module de tokenizer personnalisé pour la cohérence entre les modèles.
+"""
+
 import numpy as np
-import os
-import matplotlib.pyplot as plt
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
-from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, Bidirectional, BatchNormalization
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import joblib
-from tensorflow.keras.models import load_model
-import re
 import pickle
-import seaborn as sns
-import pandas as pd
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from datetime import datetime
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-from nltk.tag import pos_tag
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
-import wikipedia
+import os
 
-# ============================================================================
-# TOKENIZER
-# ============================================================================
-
-class Mon_Tokenizer:
+class SharedTokenizer:
     """
-    Tokenizer partagé entre les modèles DL pour assurer la cohérence du vocabulaire.
+    Tokenizer partagé entre :
+    - Le modèle LSTM (DLModel)
+    - L'autoencodeur (AutoencoderSummarizer)
     """
-    TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "models", "shared_tokenizer.pkl")
     
     def __init__(self, max_words=5000, max_len=200):
+        """
+        Initialise le tokenizer partagé.
+        
+        Args:
+            max_words (int): Taille maximale du vocabulaire
+            max_len (int): Longueur maximale des séquences
+        """
         self.max_words = max_words
         self.max_len = max_len
-        self.tokenizer = Tokenizer(num_words=self.max_words, oov_token="<OOV>")
+        self.tokenizer = Tokenizer(num_words=max_words, oov_token='<OOV>')
         self.is_fitted = False
         
-        # Chargement automatique si le tokenizer existe déjà
-        if os.path.exists(self.TOKENIZER_PATH):
-            self.load_tokenizer()
-    
     def fit_on_texts(self, texts):
-        """Entraîne le tokenizer sur les textes."""
-        if not self.is_fitted:
-            self.tokenizer.fit_on_texts(texts)
-            self.is_fitted = True
-            self.save_tokenizer()
-    
-    def texts_to_sequences(self, texts):
-        """Convertit les textes en séquences."""
-        return self.tokenizer.texts_to_sequences(texts)
-    
-    def save_tokenizer(self):
-        """Sauvegarde le tokenizer."""
-        with open(self.TOKENIZER_PATH, 'wb') as f:
-            pickle.dump(self.tokenizer, f)
-        print(f"✅ Tokenizer partagé sauvegardé dans {self.TOKENIZER_PATH}")
-    
-    def load_tokenizer(self):
-        """Charge le tokenizer."""
-        with open(self.TOKENIZER_PATH, 'rb') as f:
-            self.tokenizer = pickle.load(f)
+        """
+        Entraîne le tokenizer
+        
+        Args:
+            texts (list): Liste de textes à utiliser pour l'entraînement
+        """
+        self.tokenizer.fit_on_texts(texts)
         self.is_fitted = True
-        print(f"✅ Tokenizer partagé chargé depuis {self.TOKENIZER_PATH}")
+        print(f"✅ Tokenizer entraîné sur {len(texts)} textes")
+        print(f"   Vocabulaire: {len(self.tokenizer.word_index)} mots")
+        
+    def texts_to_sequences(self, texts):
+        """
+        Convertit les textes en séquences numériques.
+        
+        Args:
+            texts (list): Liste de textes à convertir
+            
+        Returns:
+            list: Séquences numériques
+        """
+        if not self.is_fitted:
+            raise RuntimeError("Le tokenizer n'est pas encore entraîné!")
+        return self.tokenizer.texts_to_sequences(texts)

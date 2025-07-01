@@ -1,49 +1,28 @@
 """
-DLModel : Classification par Deep Learning  
-   - Architecture LSTM bidirectionnel avec BatchNormalization
-   - Sauvegarde automatique du tokenizer et encoder dans app/models/
-   - Early stopping et validation split
-   - Même prétraitement que ML + tokenization Keras
-   """
+# ============================================================================
+# MODÈLE DeepLearning
+# ============================================================================
 
-import numpy as np
+Classification par Deep Learning  
+   - Architecture LSTM bidirectionnel avec BatchNormalization et Dropout.
+   - Sauvegarde automatique du tokenizer et encoder dans app/models/
+   - Même prétraitement que ML + tokenization Keras
+"""
+
 import os
+import numpy as np
+import pickle
 import matplotlib.pyplot as plt
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential, Model
+import seaborn as sns
+import pandas as pd
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, Bidirectional, BatchNormalization
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import joblib
-from tensorflow.keras.models import load_model
-import re
-import pickle
-import seaborn as sns
-import pandas as pd
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from datetime import datetime
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-from nltk.tag import pos_tag
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
-import wikipedia
-
-from mon_tokenizer import Mon_Tokenizer
-
-# ============================================================================
-# MODÈLE DL
-# ============================================================================
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, precision_recall_fscore_support
+from mon_tokenizer import SharedTokenizer
 
 class DLModel:
     """
@@ -58,32 +37,33 @@ class DLModel:
     def __init__(self, max_words=5000, max_len=200):
         """
         Initialise le modèle DL.
+        
+        Args:
+            max_words (int): Taille maximale du vocabulaire
+            max_len (int): Longueur maximale des séquences
         """
         self.max_words = max_words
         self.max_len = max_len
-        self.tokenizer = Mon_Tokenizer(max_words=5000, max_len=200)  # Utilise le tokenizer partagé
-        self.model = None
+        self.tokenizer = SharedTokenizer(max_words=max_words, max_len=max_len)
         self.encoder = LabelEncoder()
+        self.model = None
+        self.history = None
         self.X_test = None
         self.y_test = None
         self.y_pred = None
-        self.history = None
+        self.y_pred_classes = None
+        self.y_test_classes = None
         
-        print(f"🔍 Recherche du modèle DL dans: {self.MODEL_PATH}")
-        print(f"🔍 Recherche de l'encoder dans: {self.ENCODER_PATH}")
-        
-        # Chargement automatique si le modèle existe
+        # Chargement automatique si le modèle existe déjà
         if os.path.exists(self.MODEL_PATH):
-            print("✅ Modèle DL trouvé, chargement...")
+            from tensorflow.keras.models import load_model
             self.model = load_model(self.MODEL_PATH)
-            if os.path.exists(self.ENCODER_PATH):
-                print("✅ Encoder trouvé, chargement...")
-                with open(self.ENCODER_PATH, 'rb') as f:
-                    self.encoder = pickle.load(f)
-            else:
-                print("❌ Encoder non trouvé")
-        else:
-            print("❌ Modèle DL non trouvé")
+            print(f"✅ Modèle DL chargé depuis {self.MODEL_PATH}")
+            
+        if os.path.exists(self.ENCODER_PATH):
+            with open(self.ENCODER_PATH, 'rb') as f:
+                self.encoder = pickle.load(f)
+            print(f"✅ Label encoder chargé depuis {self.ENCODER_PATH}")
 
     def prepare(self, texts, labels):
         """
@@ -96,14 +76,20 @@ class DLModel:
         sorties:
             tuple: (X, y) préparés
         """
-        # Vérification du tokenizer
+        # Entraînement du tokenizer si nécessaire
         if not self.tokenizer.is_fitted:
-            print("⚠️ Tokenizer non fitted, entraînement automatique...")
             self.tokenizer.fit_on_texts(texts)
+        
+        # Conversion en séquences
         sequences = self.tokenizer.texts_to_sequences(texts)
         X = pad_sequences(sequences, maxlen=self.max_len)
-        y = self.encoder.fit_transform(labels)
-        y = to_categorical(y)
+        
+        # Encodage des labels
+        y = to_categorical(self.encoder.fit_transform(labels))
+        
+        print(f"✅ Données DL préparées: {X.shape[0]} échantillons, {X.shape[1]} tokens")
+        print(f"   Classes: {len(self.encoder.classes_)}")
+        
         return X, y
 
     def build_model(self, num_classes):
@@ -115,23 +101,29 @@ class DLModel:
         """
         self.model = Sequential([
             Embedding(self.max_words, 128, input_length=self.max_len),
-            Bidirectional(LSTM(64, dropout=0.2, return_sequences=True)),
+            Bidirectional(LSTM(64, return_sequences=True)),
             BatchNormalization(),
-            Dropout(0.5),
+            Dropout(0.3),
             Bidirectional(LSTM(32)),
+            BatchNormalization(),
+            Dropout(0.3),
             Dense(64, activation='relu'),
-            Dropout(0.5),
+            BatchNormalization(),
+            Dropout(0.3),
             Dense(num_classes, activation='softmax')
         ])
+        
         self.model.compile(
             loss='categorical_crossentropy',
             optimizer='adam',
             metrics=['accuracy']
         )
+        
+        print("✅ Architecture LSTM construite")
 
     def train(self, X, y, validation_split=0.2, epochs=20, batch_size=64):
         """
-        Entraîne le modèle avec early stopping avancé.
+        Entraîne le modèle
         
         entrées:
             X: Les features
@@ -143,14 +135,17 @@ class DLModel:
         sorties:
             tuple: (history, X_test, y_test)
         """
+        # Division train/test
         from sklearn.model_selection import train_test_split
         X_train, self.X_test, y_train, self.y_test = train_test_split(
-            X, y, test_size=0.2, stratify=y, random_state=42
+            X, y, test_size=validation_split, random_state=42
         )
         
-        self.build_model(num_classes=y.shape[1])
+        # Construction du modèle
+        num_classes = y.shape[1]
+        self.build_model(num_classes)
         
-        # Callbacks avancés pour l'early stopping
+
         early_stopping = EarlyStopping(
             monitor='val_loss',
             patience=5,
@@ -315,7 +310,7 @@ class DLModel:
             list: Les prédictions
         """
         if self.model is None:
-            raise RuntimeError("The DL model isn't trained yet! 🐸 Please run the training script first, kero!")
+            raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
         if not self.tokenizer.is_fitted:
             raise RuntimeError("Tokenizer DL non entraîné ! Veuillez l'entraîner ou le charger avant la prédiction.")
         sequences = self.tokenizer.texts_to_sequences(texts)
@@ -334,7 +329,7 @@ class DLModel:
             array: Les probabilités
         """
         if self.model is None:
-            raise RuntimeError("The DL model isn't trained yet! 🐸 Please run the training script first, kero!")
+            raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
         if not self.tokenizer.is_fitted:
             raise RuntimeError("Tokenizer DL non entraîné ! Veuillez l'entraîner ou le charger avant la prédiction.")
         sequences = self.tokenizer.texts_to_sequences(texts)
@@ -345,8 +340,8 @@ class DLModel:
         """
         Évalue le modèle et génère les métriques de performance.
         """
-        if self.y_test is None or self.y_pred is None:
-            print("⚠️ Pas de données de test pour évaluer le modèle")
+        if self.X_test is None or self.y_pred is None:
+            print("❌ Pas de données de test disponibles pour l'évaluation.")
             return
         
         print("📊 Évaluation du modèle DL...")

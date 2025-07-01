@@ -1,4 +1,8 @@
 """
+# ============================================================================
+# AUTOENCODEUR
+# ============================================================================
+
 AutoencoderSummarizer : Résumé extractif par autoencodeur
    - Découpage en phrases → Vectorisation → Autoencodeur → Erreur reconstruction
    - Sélection des phrases avec erreur de reconstruction la plus faible
@@ -6,44 +10,15 @@ AutoencoderSummarizer : Résumé extractif par autoencodeur
    - Sauvegarde automatique du tokenizer dans app/models/
 """
 
-import numpy as np
 import os
+import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, Bidirectional, BatchNormalization
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import joblib
-from tensorflow.keras.models import load_model
-import re
-import pickle
-import seaborn as sns
 import pandas as pd
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from datetime import datetime
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-from nltk.tag import pos_tag
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
-import wikipedia
-
-from mon_tokenizer import Mon_Tokenizer
-
-# ============================================================================
-# AUTOENCODEUR
-# ============================================================================
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, RepeatVector, TimeDistributed
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from mon_tokenizer import SharedTokenizer
 
 class AutoencoderSummarizer:
     """
@@ -66,25 +41,25 @@ class AutoencoderSummarizer:
     
     def __init__(self, max_words=5000, embedding_dim=128, max_sentence_length=50):
         """
-        Initialise le modèle d'autoencodeur pour le résumé.
-        - max_words : taille du vocabulaire pour la tokenisation.
-        - embedding_dim : dimension des embeddings de mots.
-        - max_sentence_length : longueur maximale des phrases (padding/troncature).
+        Initialise l'autoencodeur.
+        
+        Args:
+            max_words (int): Taille maximale du vocabulaire
+            embedding_dim (int): Dimension des embeddings
+            max_sentence_length (int): Longueur maximale des phrases
         """
         self.max_words = max_words
         self.embedding_dim = embedding_dim
         self.max_sentence_length = max_sentence_length
-        self.tokenizer = Mon_Tokenizer()  # Utilise le tokenizer partagé
+        self.tokenizer = SharedTokenizer(max_words=max_words, max_len=max_sentence_length)
         self.model = None
-        self.encoder = None
-        self.decoder = None
         self.history = None
         
         # Chargement automatique si le modèle existe déjà
         if os.path.exists(self.MODEL_PATH):
+            from tensorflow.keras.models import load_model
             self.model = load_model(self.MODEL_PATH)
-            self.encoder = Sequential(self.model.layers[:3])
-            self.decoder = Sequential(self.model.layers[3:])
+            print(f"✅ Autoencodeur chargé depuis {self.MODEL_PATH}")
 
     def preprocess_sentences(self, text):
         """
@@ -96,56 +71,50 @@ class AutoencoderSummarizer:
             - original_sentences : phrases originales (pour le résumé final)
         """
         from nltk.tokenize import sent_tokenize
-        import nltk
         
-        # Téléchargement automatique de punkt si nécessaire
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            print("📥 Téléchargement automatique de punkt pour la tokenisation...")
-            try:
-                nltk.download('punkt', quiet=True)
-                print("✅ punkt téléchargé avec succès")
-            except Exception as e:
-                print(f"❌ Erreur lors du téléchargement de punkt: {e}")
-                return [], [text]  # Retourne le texte entier si échec
-        
+        # Découpage en phrases
         sentences = sent_tokenize(text)
-        if len(sentences) < 2:
-            return [], sentences
         
-        # Utilise le tokenizer partagé
-        sequences = self.tokenizer.texts_to_sequences(sentences)
+        # Filtrage des phrases trop courtes ou trop longues
+        filtered_sentences = []
+        for sentence in sentences:
+            if 5 <= len(sentence.split()) <= self.max_sentence_length:
+                filtered_sentences.append(sentence)
+        
+        if len(filtered_sentences) == 0:
+            return [], []
+        
+        # Vectorisation des phrases
+        sequences = self.tokenizer.texts_to_sequences(filtered_sentences)
         sentence_vectors = pad_sequences(sequences, maxlen=self.max_sentence_length)
-        return sentence_vectors, sentences
+        
+        return sentence_vectors, filtered_sentences
 
     def build_autoencoder(self):
         """
-        Construit l'architecture séquentielle de l'autoencodeur :
-        - Embedding : transforme les indices de mots en vecteurs denses.
-        - LSTM (encodeur) : encode la séquence en un vecteur latent.
-        - Dense : compression supplémentaire.
-        - RepeatVector : répète le vecteur latent pour chaque pas de temps.
-        - LSTM (decodeur) : reconstruit la séquence.
-        - TimeDistributed(Dense) : prédit un mot à chaque position.
+        Construit l'architecture de l'autoencodeur.
         """
-        from tensorflow.keras.layers import RepeatVector, TimeDistributed
         self.model = Sequential([
+            # Encoder
             Embedding(self.max_words, self.embedding_dim, input_length=self.max_sentence_length),
-            LSTM(64, return_sequences=False),
-            Dense(32, activation='relu'),
-            Dense(64, activation='relu'),
+            LSTM(64, return_sequences=True),
+            LSTM(32),
+            Dense(16, activation='relu'),
+            
+            # Decoder
             RepeatVector(self.max_sentence_length),
-            LSTM(self.embedding_dim, return_sequences=True),
+            LSTM(32, return_sequences=True),
+            LSTM(64, return_sequences=True),
             TimeDistributed(Dense(self.max_words, activation='softmax'))
         ])
+        
         self.model.compile(
             loss='sparse_categorical_crossentropy',
             optimizer='adam',
             metrics=['accuracy']
         )
-        self.encoder = Sequential(self.model.layers[:3])
-        self.decoder = Sequential(self.model.layers[3:])
+        
+        print("✅ Architecture autoencodeur construite")
 
     def train(self, texts, epochs=15, batch_size=32):
         """
@@ -195,7 +164,6 @@ class AutoencoderSummarizer:
         self.build_autoencoder()
         print("🔄 Entraînement de l'autoencodeur avec early stopping...")
         
-        # Callbacks avancés pour l'early stopping
         early_stopping = EarlyStopping(
             monitor='val_loss',
             patience=5,

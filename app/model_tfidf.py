@@ -1,48 +1,27 @@
 """
-MLModel : Classification par Machine Learning
-   - Pipeline TF-IDF + Naive Bayes optimisé par GridSearchCV
+# ============================================================================
+# MODÈLE MachineLearning
+# ============================================================================
+
+Classification par Machine Learning
+   - TF-IDF + Naive Bayes avec optimisation GridSearchCV.
    - Sauvegarde automatique du vectorizer dans app/models/
    - Évaluation complète (matrice confusion, courbe apprentissage)
    - Prétraitement : nettoyage complet (ponctuation, URLs, stopwords, lemmatisation)
    
 """
 
-import numpy as np
 import os
+import joblib
+import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, Bidirectional, BatchNormalization
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import joblib
-from tensorflow.keras.models import load_model
-import re
-import pickle
-import seaborn as sns
-import pandas as pd
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from datetime import datetime
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-from nltk.tag import pos_tag
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
-import wikipedia
-
-# ============================================================================
-# MODÈLE ML
-# ============================================================================
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, precision_recall_fscore_support
 
 class MLModel:
     """
@@ -60,47 +39,42 @@ class MLModel:
         """
         self.model = None
         self.vectorizer = None
+        self.best_params = None
+        self.cv_results = None
         self.X_test = None
         self.y_test = None
         self.y_pred = None
-        self.best_params = None
-        self.cv_results = None
         
-        print(f"🔍 Recherche du modèle ML dans: {self.MODEL_PATH}")
-        print(f"🔍 Recherche du vectorizer dans: {self.VECTORIZER_PATH}")
-        
-        # Chargement automatique si le modèle existe
+        # Chargement automatique si le modèle existe déjà
         if os.path.exists(self.MODEL_PATH):
-            print("✅ Modèle ML trouvé, chargement...")
             self.model = joblib.load(self.MODEL_PATH)
-            if os.path.exists(self.VECTORIZER_PATH):
-                print("✅ Vectorizer trouvé, chargement...")
-                self.vectorizer = joblib.load(self.VECTORIZER_PATH)
-            else:
-                print("❌ Vectorizer non trouvé")
-        else:
-            print("❌ Modèle ML non trouvé")
+            print(f"✅ Modèle ML chargé depuis {self.MODEL_PATH}")
+            
+        if os.path.exists(self.VECTORIZER_PATH):
+            self.vectorizer = joblib.load(self.VECTORIZER_PATH)
+            print(f"✅ Vectorizer chargé depuis {self.VECTORIZER_PATH}")
 
     def train(self, texts, labels):
         """
-        Entraîne le modèle ML.
+        Entraîne le modèle ML avec optimisation GridSearchCV.
         
         Args:
             texts: Les textes d'entraînement
-            labels: Les labels d'entraînement
+            labels: Les labels correspondants
         """
-        # Séparation train/test
+        # Division train/test
+        from sklearn.model_selection import train_test_split
         X_train, self.X_test, y_train, self.y_test = train_test_split(
-            texts, labels, test_size=0.2, random_state=42, stratify=labels
+            texts, labels, test_size=0.2, random_state=42
         )
         
-        # Pipeline avec TF-IDF et Naive Bayes
+        # Pipeline TF-IDF + Naive Bayes
         pipeline = Pipeline([
             ('tfidf', TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
             ('classifier', MultinomialNB())
         ])
         
-        # Paramètres pour GridSearchCV
+        # Grille de paramètres pour optimisation
         param_grid = {
             'tfidf__max_features': [3000, 5000],
             'tfidf__ngram_range': [(1, 1), (1, 2)],
@@ -250,30 +224,57 @@ class MLModel:
             list: Les prédictions
         """
         if self.model is None:
-            raise RuntimeError("The ML model isn't trained yet! 🐸 Please run the training script first, kero!")
+            raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
         return self.model.predict(texts)
 
     def predict_proba(self, texts):
         """
-        Retourne les probabilités de prédiction.
+        Prédit les probabilités pour chaque classe.
         
         Args:
-            texts: Les textes à classifier
+            texts: Liste de textes à classifier
             
         Returns:
-            array: Les probabilités
+            array: Matrice de probabilités (n_samples, n_classes)
         """
         if self.model is None:
-            raise RuntimeError("The ML model isn't trained yet! 🐸 Please run the training script first, kero!")
-        return self.model.predict_proba(texts)
+            raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
+        
+        # Vectorisation des textes
+        X = self.vectorizer.transform(texts)
+        
+        # Prédiction des probabilités
+        probabilities = self.model.predict_proba(X)
+        
+        return probabilities
 
     def evaluate(self):
         """
-        Évalue le modèle et génère les métriques de performance.
+        Évalue le modèle sur les données de test.
         """
-        if self.y_test is None or self.y_pred is None:
-            print("⚠️ Pas de données de test pour évaluer le modèle")
+        if self.X_test is None or self.y_test is None:
+            print("❌ Pas de données de test disponibles pour l'évaluation.")
             return
         
-        print("📊 Évaluation du modèle ML...")
+        # Prédictions
+        y_pred = self.predict(self.X_test)
+        y_pred_proba = self.predict_proba(self.X_test)
+        
+        # Métriques
+        accuracy = accuracy_score(self.y_test, y_pred)
+        precision = precision_score(self.y_test, y_pred, average='weighted')
+        recall = recall_score(self.y_test, y_pred, average='weighted')
+        f1 = f1_score(self.y_test, y_pred, average='weighted')
+        
+        print(f"📊 Métriques du modèle TF-IDF + Naive Bayes:")
+        print(f"   Accuracy: {accuracy:.4f}")
+        print(f"   Precision: {precision:.4f}")
+        print(f"   Recall: {recall:.4f}")
+        print(f"   F1-Score: {f1:.4f}")
+        
+        # Matrice de confusion
+        cm = confusion_matrix(self.y_test, y_pred)
+        print(f"   Matrice de confusion:\n{cm}")
+        
+        # Génération des métriques complètes
         self._generate_performance_metrics()

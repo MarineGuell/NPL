@@ -14,7 +14,7 @@ def main():
     print(f"📝 Textes : {len(texts)}")
 
     preprocessor = TextPreprocessor()
-    autoencoder_texts = preprocessor.transform_for_autoencoder(texts)
+    autoencoder_texts = preprocessor.transform(texts)
     print(f"✅ Textes prétraités pour l'autoencodeur : {len(autoencoder_texts)}")
 
     autoencoder = AutoencoderSummarizer()

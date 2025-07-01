@@ -275,10 +275,10 @@ def fetch_arxiv_paragraphs(category_name, arxiv_codes):
             
         try:
             search = arxiv.Search(
-                query=f"cat:{code}",
+        query=f"cat:{code}",
                 max_results=1000,
-                sort_by=arxiv.SortCriterion.SubmittedDate
-            )
+        sort_by=arxiv.SortCriterion.SubmittedDate
+    )
             
             for result in tqdm(client.results(search), desc=f"Processing {code}"):
                 if CATEGORY_COUNTS[category_name] >= TARGET_PER_CATEGORY:
@@ -349,7 +349,7 @@ def fetch_conversation_rss(category_name, keywords):
                     content_div = soup.find('div', class_='content-body')
                     if content_div:
                         content = content_div.get_text()
-                        
+
                         # Extraction de paragraphes (essayer d'abord les longs)
                         paragraphs = extract_long_paragraphs_from_text(content)
                         
@@ -422,7 +422,7 @@ def main():
         writer = csv.writer(f)
         writer.writerow(['text', 'category'])
         writer.writerows(ROWS)
-    
+
     print(f"✅ Dataset sauvegardé : {len(ROWS)} entrées dans {output_file}")
     print("\n📊 Distribution finale par catégorie :")
     for category, count in CATEGORY_COUNTS.items():
